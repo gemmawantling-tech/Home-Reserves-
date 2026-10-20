@@ -15,11 +15,12 @@
   <main class="app">
     <header class="header">
       <div><div class="eyebrow">HOUSEHOLD READINESS</div><h1>Home Reserves</h1><p class="subtitle">Your stock, your targets, your family meal plan.</p></div>
-      <button id="quickAdd" class="primary" type="button">+ Item</button>
+      <div class="actions"><button id="quickAdd" type="button">+ Add item</button><button class="primary" data-action="scan">Scan barcode</button></div>
     </header>
     <nav class="nav" aria-label="Main navigation">
       <button type="button" data-tab="overview">Overview</button>
       <button type="button" data-tab="inventory">Inventory</button>
+      <button type="button" data-tab="stocktake">Stocktake</button>
       <button type="button" data-tab="meals">Meals</button>
       <button type="button" data-tab="settings">Settings</button>
     </nav>
@@ -28,6 +29,11 @@
     <p class="footer-note">Data is saved on this device only. Export a backup regularly, especially before changing your phone.</p>
   </main>
   <dialog id="editor" aria-label="Edit record"><div id="editorBody"></div></dialog>
+  <script src="./vendor/zxing.min.js" defer></script>
+  <script src="./inventory-core.js" defer></script>
+  <script src="./product-lookup.js" defer></script>
+  <script src="./barcode-scanner.js" defer></script>
   <script src="./app.js" defer></script>
+  <script src="./scanning.js" defer></script>
 </body>
 </html>
