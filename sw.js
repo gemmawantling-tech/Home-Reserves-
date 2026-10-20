@@ -1,4 +1,4 @@
-const CACHE_NAME='home-reserves-v2-scanning';
+const CACHE_NAME='home-reserves-v3-portions';
 const LOCAL_FILES=['./','./index.html','./app.css','./app.js','./inventory-core.js','./product-lookup.js','./barcode-scanner.js','./scanning.js','./vendor/zxing.min.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(LOCAL_FILES)).then(()=>self.skipWaiting()));

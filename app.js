@@ -39,9 +39,9 @@ let state, activeTab = 'overview', categoryFilter = 'all', statusFilter = 'all',
 function validData(d){
   if (!d || !Array.isArray(d.categories) || !Array.isArray(d.items) || !Array.isArray(d.recipes) || typeof d.settings !== 'object') throw Error('Not a valid Home Reserves backup');
   if (d.items.length > 20000 || d.categories.length > 500 || d.recipes.length > 2000) throw Error('Backup too large');
-  return d;
+  return InventoryCore.migrateCategories(d);
 }
-try {state=validData(JSON.parse(localStorage.getItem(STORAGE_KEY)));}catch{state=newData();}
+try {state=validData(JSON.parse(localStorage.getItem(STORAGE_KEY)));}catch{state=InventoryCore.migrateCategories(newData());}
 const cat = id => state.categories.find(c => c.id === id);
 const itemById = id => state.items.find(i => i.id === id);
 const listed = i => i.current !== null && i.current !== undefined && i.current !== '';
@@ -80,7 +80,7 @@ function requirements(recipe){
   return needed;
 }
 function calculateMeals(){
-  const remaining={};state.items.forEach(i=>remaining[i.id]=i.portionType==='meal'?0:amount(i));
+  const remaining={};state.items.forEach(i=>remaining[i.id]=i.portionType==='meal'||cat(i.category)?.type!=='food'?0:amount(i));
   const allocated={};state.recipes.forEach(r=>allocated[r.id]=0);
   const individually={};
   state.recipes.forEach(r=>{
@@ -124,7 +124,7 @@ function editItem(id){
     field('optimum','Optimum level',i?.optimum??'','type="number" min="0" step="any" placeholder="Your target"')+'</div>'+
     '<div class="split">'+field('unit','Stock counted in',i?.unit||'packs','required maxlength="32" placeholder="tins / bottles"')+
     field('location','Storage location',i?.location||'','maxlength="90" placeholder="Utility cupboard"')+'</div>'+
-    '<div class="split">'+field('portionsPerPack','Portions per pack',i?.portionsPerPack??'','type="number" min="0" step="any"')+dropdown('portionType','Portion type',[['ingredient','Ingredient'],['side','Side'],['meal','Complete meal']],i?.portionType||'ingredient')+'</div>'+
+    (i?.portionSource?'<p class="hint">Portions: '+escapeHTML(i.portionSource)+'. Change the number below to replace this with your own value.</p>':'')+'<div class="split">'+field('portionsPerPack','Portions per pack',i?.portionsPerPack??'','type="number" min="0" step="any"')+dropdown('portionType','Portion type',[['ingredient','Ingredient'],['side','Side'],['meal','Complete meal']],i?.portionType||'ingredient')+'</div>'+
     '<div class="split">'+field('expiry','Earliest expiry date',i?.expiry||'','type="date"')+
     field('litresPerUnit','Litres per item (for water)',i?.litresPerUnit??'','type="number" min="0" step="any" placeholder="e.g. 5"')+'</div>'+
     '<div class="field"><label for="f_notes">Notes</label><textarea id="f_notes" name="notes" rows="2" maxlength="300" placeholder="Optional">'+escapeHTML(i?.notes||'')+'</textarea></div>'+
@@ -155,6 +155,7 @@ function stats(){
   const counted=state.items.filter(listed).length,below=state.items.filter(low).length,exp=state.items.filter(expiresSoon).length;
   return coverageSummary()+'<div class="stat-grid">'+stat(fmt(counted)+'<span class="small muted"> / '+fmt(state.items.length)+'</span>','Item types counted')+stat(fmt(below),'Below your optimum')+stat(fmt(exp),'Expiring or expired')+stat(fmt(calculateMeals().portions),'Planned food portions')+'</div>';
 }
+function backupStatus(){return '<section class="card"><h2>Protect your stocktake</h2><p class="hint">'+(state.backupRequestedAt?'Last backup download requested: '+escapeHTML(new Date(state.backupRequestedAt).toLocaleDateString('en-GB'))+'. Check that the file is saved.':'No backup download recorded yet.')+' Keep a copy outside this phone. Backups include stock, product details, portions, categories and recipes. Household sync is not connected.</p><button data-action="export">Export backup</button></section>';}
 function overview(){
   const m=calculateMeals(),people=setting('people',4),meals=setting('mealsPerDay',1),days=m.portions/(people*meals),water=waterLitres(),waterDays=water/(people*setting('waterPerPerson',3));
   const below=state.items.filter(low).sort((a,b)=>a.name.localeCompare(b.name));
@@ -178,7 +179,7 @@ function itemCard(i){
   return '<article class="item"><div class="item-header"><div><div class="item-title">'+escapeHTML(i.name)+'</div>'+badges+'</div><button class="text-button" data-action="editItem" data-id="'+escapeHTML(i.id)+'">Edit</button></div>'+
     (listed(i)&&max>0?'<div class="meter '+(below?'low':'')+'"><span style="width:'+Math.min(100,amount(i)*100/max)+'%"></span></div>':'')+
     '<div class="item-bottom"><div class="counts">Current: <strong>'+(listed(i)?fmt(i.current):'—')+'</strong> '+escapeHTML(i.unit)+'<br>Optimum: <strong>'+(targeted(i)?fmt(i.optimum):'Not set')+'</strong> '+escapeHTML(i.unit)+
-    (i.portionsPerPack?'<br>'+fmt(amount(i)*i.portionsPerPack)+' '+escapeHTML(i.portionType||'ingredient')+' portions':'')+(i.location?'<br>📍 '+escapeHTML(i.location):'')+(i.expiry?'<br>Expiry: '+escapeHTML(i.expiry):'')+(i.notes?'<br>'+escapeHTML(i.notes):'')+'</div>'+
+    (i.portionsPerPack?'<br>'+fmt(amount(i)*i.portionsPerPack)+' '+escapeHTML(i.portionType||'ingredient')+' portions'+(['estimated','calculated'].includes(i.portionSource)?' (estimate)':''):'')+(i.location?'<br>📍 '+escapeHTML(i.location):'')+(i.expiry?'<br>Expiry: '+escapeHTML(i.expiry):'')+(i.notes?'<br>'+escapeHTML(i.notes):'')+'</div>'+
     '<div class="stepper"><button type="button" data-action="minus" data-id="'+escapeHTML(i.id)+'" aria-label="Use one '+escapeHTML(i.name)+'" '+(!listed(i)||amount(i)<=0?'disabled':'')+'>−</button><strong>'+(listed(i)?fmt(i.current):'—')+'</strong><button type="button" data-action="plus" data-id="'+escapeHTML(i.id)+'" aria-label="Add one '+escapeHTML(i.name)+'">+</button></div></div></article>';
 }
 function inventory(){
@@ -213,7 +214,7 @@ function settings(){
     field('waterPerPerson','Water litres per person / day',setting('waterPerPerson',3),'required type="number" min="0.1" max="20" step="0.1"')+
     '<p class="hint">Select 1 tracked meal a day if you are only planning dinners, or 3 if you have included breakfast, lunch and dinner. The water estimate covers drinking and basic cooking only.</p><button class="primary" type="submit">Save assumptions</button></form></section>'+
     '<section class="card"><div class="section-title"><h2>My categories</h2><button data-action="newCategory">+ Category</button></div>'+state.categories.map(c=>'<div class="row-line"><div><strong>'+escapeHTML(c.name)+'</strong><div class="tiny muted">'+(c.type==='food'?'Food for recipes':c.type==='water'?'Water volumes':'General stock')+' · '+state.items.filter(i=>i.category===c.id).length+' item types</div></div><button class="text-button" data-action="editCategory" data-id="'+escapeHTML(c.id)+'">Edit</button></div>').join('')+'</section>'+
-    '<section class="card"><h2>Starter list and backups</h2><p class="small muted">Load an editable list of common items without inventing quantities. You can add more categories and item types whenever you need.</p>'+
+    backupStatus()+'<section class="card"><h2>Starter list and backups</h2><p class="small muted">Load an editable list of common items without inventing quantities. You can add more categories and item types whenever you need.</p>'+
     '<div class="actions"><button data-action="starter">+ Load starter items</button><button data-action="export">Export backup</button><button data-action="csv">Export CSV</button><button data-action="import">Import backup</button></div>'+
     '<input id="importInput" type="file" accept="application/json,.json"><p class="hint">JSON backup includes recipes and settings. CSV is a readable inventory list. Import replaces your current inventory after confirmation.</p></section>'+
     '<section class="card"><h2>Useful limitations</h2><p class="small muted">All counts stay on this browser, not automatically synced to your husband’s phone or GitHub. A single expiry date represents the earliest item in that stock line — use separate stock lines if different batches expire on different dates. Preparedness is about practical supplies, not chasing a perfect score.</p></section>';
@@ -263,7 +264,7 @@ document.addEventListener('click',e=>{
     case 'recipeUp':moveRecipe(id,-1);break;
     case 'recipeDown':moveRecipe(id,1);break;
     case 'starter':loadStarters();break;
-    case 'export':downloadFile('home-reserves-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2),'application/json');break;
+    case 'export':state.backupRequestedAt=new Date().toISOString();persist();downloadFile('home-reserves-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2),'application/json');break;
     case 'csv':{
       const rows=[['Category','Item','Current','Optimum','Unit','Location','Expiry','Litres per item','Notes'],...state.items.map(i=>[cat(i.category)?.name||'',i.name,i.current??'',i.optimum??'',i.unit,i.location||'',i.expiry||'',i.litresPerUnit??'',i.notes||''])];
       const csv=rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
@@ -300,7 +301,7 @@ document.addEventListener('submit',e=>{
     const name=String(data.get('name')||'').trim(),category=String(data.get('category')),unit=String(data.get('unit')||'').trim();
     if(!name||!unit||!cat(category)){alert('Please provide a name, unit and valid category.');return;}
     const item={...(id?itemById(id):{}),id:id||uid(),name,category,unit,portionsPerPack:numberOrNull(data.get('portionsPerPack')),portionType:String(data.get('portionType')||'ingredient'),current:numberOrNull(data.get('current')),optimum:numberOrNull(data.get('optimum')),location:String(data.get('location')||'').trim(),expiry:String(data.get('expiry')||''),litresPerUnit:numberOrNull(data.get('litresPerUnit')),notes:String(data.get('notes')||'').trim()};
-    if(id){const at=state.items.findIndex(i=>i.id===id);if(at<0)return;state.items[at]=item;}else state.items.push(item);
+    if(!id||item.portionsPerPack!==itemById(id)?.portionsPerPack)item.portionSource='manual';if(id){const at=state.items.findIndex(i=>i.id===id);if(at<0)return;state.items[at]=item;}else state.items.push(item);
   }else if(form.id==='categoryForm'){
     const name=String(data.get('name')||'').trim(),type=String(data.get('type'));
     if(!name||!['food','water','other'].includes(type)){alert('Enter a valid category.');return;}

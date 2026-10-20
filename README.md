@@ -19,3 +19,15 @@ This repository uses the existing `home_reserves_inventory_v1` localStorage key.
 ## Validation
 
 Run `node --test tests/*.test.cjs`. Browser integration: install Playwright externally, then `node tests/browser.cjs` against a local server on port 8765, or set `TEST_URL`. The browser test mocks product lookup and checks mobile scan entry, catalogue corrections, queued commits, quantity/portion refresh and reload persistence. It does not establish physical camera performance; Android Chrome and iOS Safari real-device checks remain necessary.
+
+## Portion estimates and categories update
+
+Drinks, Snacks, Treats and Alcohol are added once for existing inventories and imported backups, without moving stock, replacing custom categories, resetting quantities or overwriting catalogue corrections. Drinks and Alcohol use general stock categories, excluded from both direct meal coverage and recipe allocation.
+
+Open Food Facts pack and serving weights are normalised to grams or millilitres. A missing serving count can be calculated from a pack and serving amount in matching units; calculated counts remain labelled estimates. Ambiguous multipacks, mixed/drained/prepared weights, unknown sizes and mismatched dimensions are left for review. A product's barcode alone cannot supply missing facts.
+
+The review card offers an editable serving weight and **Use calculated portions**. Optional starting estimates are dry rice 75g (side), dry pasta 75g (ingredient), and dry oats 40g (ingredient). These are planning choices, not product facts or personalised dietary advice. Estimates can be replaced by a manual count, and saved corrections take priority on subsequent scans. Imported servings never imply a complete meal. Pack size and serving size must refer to the same dry/prepared/drained basis.
+
+Settings shows when a backup download was last requested, with a reminder to check the file was saved. It does not claim to verify a file on the user's phone. Cross-device household sync still requires a configured backend, authentication and household access controls; it is not enabled by this release.
+
+Additional validation: `node tests/portions-browser.cjs` tests existing-data migration, new categories, imported weight calculations, explicit estimates, correction preservation, backup download and beverage exclusion from food coverage.
