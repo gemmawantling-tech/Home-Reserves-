@@ -163,9 +163,9 @@ function backupStatus(){return '<section class="card"><h2>Protect your stocktake
 function overview(){
   const m=calculateMeals(),people=setting('people',4),meals=setting('mealsPerDay',1),days=m.portions/(people*meals),water=waterLitres(),waterDays=water/(people*setting('waterPerPerson',3));
   const below=state.items.filter(low).sort((a,b)=>a.name.localeCompare(b.name));
-  return '<section class="card hero"><div class="eyebrow">YOUR HOME AT A GLANCE</div><h2>Everything in one place</h2><p class="small muted">Track what you have, set your own comfortable levels and see what needs using or checking. No automatic shopping targets.</p><button data-action="reviewGaps">Identify gaps</button></section>'+gapsSummary()+stats()+
-  '<section class="card"><div class="section-title"><h2>What might your supplies cover?</h2><button class="text-button" data-tab="meals">Meal details →</button></div>'+
-  '<div class="split"><div><div class="large-number">'+(state.recipes.length||m.portions?fmt(days):'—')+'</div><div class="small muted">Days of planned meals</div><div class="small"><strong>'+(state.recipes.length||m.portions?fmt(days/7)+' weeks':'Add recipes to estimate')+'</strong></div></div>'+
+  return '<section class="card hero"><div class="eyebrow">YOUR HOME AT A GLANCE</div><h2>Everything in one place</h2><p class="small muted">Track what you have, set your own comfortable levels and see what needs using or checking. No automatic shopping targets.</p><button data-action="reviewGaps">Identify gaps</button></section>'+gapsSummary()+foodCoverageCard()+stats()+
+  '<section class="card"><div class="section-title"><h2>Meal plan and water coverage</h2><button class="text-button" data-tab="meals">Meal details →</button></div>'+
+  '<div class="split"><div><div class="large-number">'+(state.recipes.length||m.portions?fmt(days):'—')+'</div><div class="small muted">Days of tracked meals only</div><div class="small"><strong>'+(state.recipes.length||m.portions?fmt(days/7)+' weeks':'Add recipes to estimate')+'</strong></div></div>'+
   '<div><div class="large-number">'+(water>0?fmt(waterDays):'—')+'</div><div class="small muted">Water days</div><div class="small"><strong>'+fmt(water)+' litres logged</strong></div></div></div>'+
   '<p class="hint">Based on '+fmt(people)+' people, '+fmt(meals)+' tracked meal(s) per person daily and '+fmt(setting('waterPerPerson',3))+' litres of water per person daily. These are approximate planning figures, not guarantees of a nutritionally complete diet or water for washing.</p></section>'+
   '<section class="card"><div class="section-title"><h2>Below your optimum</h2><button class="text-button" data-tab="inventory">All stock →</button></div>'+
@@ -246,6 +246,7 @@ function settings(){
   return '<section class="card"><h2>Household planning assumptions</h2><form id="settingsForm"><div class="split">'+
     field('people','People',setting('people',4),'required type="number" min="1" max="30" step="1"')+
     field('mealsPerDay','Tracked meals per person / day',setting('mealsPerDay',1),'required type="number" min="1" max="6" step="1"')+'</div>'+
+    field('householdKcal','Household kcal per day (optional override)',state.settings.householdKcal??'','type="number" min="1" step="any" placeholder="Default: 2,000 × people"')+'<p class="hint">Food days use known stock calories divided by this daily total. Leave blank for the provisional 2,000 kcal per person assumption. Needs vary by age, body size and activity; adjust for your household, including children. This is an energy estimate, not a balanced-diet assessment.</p>'+
     field('waterPerPerson','Water litres per person / day',setting('waterPerPerson',3),'required type="number" min="0.1" max="20" step="0.1"')+
     '<p class="hint">Select 1 tracked meal a day if you are only planning dinners, or 3 if you have included breakfast, lunch and dinner. The water estimate covers drinking and basic cooking only.</p><button class="primary" type="submit">Save assumptions</button></form></section>'+
     '<section class="card"><div class="section-title"><h2>My categories</h2><button data-action="newCategory">+ Category</button></div>'+state.categories.map(c=>'<div class="row-line"><div><strong>'+escapeHTML(c.name)+'</strong><div class="tiny muted">'+(c.type==='food'?'Food for recipes':c.type==='water'?'Water volumes':'General stock')+' · '+state.items.filter(i=>i.category===c.id).length+' item types</div></div><button class="text-button" data-action="editCategory" data-id="'+escapeHTML(c.id)+'">Edit</button></div>').join('')+'</section>'+
@@ -358,7 +359,7 @@ document.addEventListener('submit',e=>{
   }else if(form.id==='settingsForm'){
     const people=Number(data.get('people')),mealsPerDay=Number(data.get('mealsPerDay')),waterPerPerson=Number(data.get('waterPerPerson'));
     if(!Number.isInteger(people)||people<1||!Number.isInteger(mealsPerDay)||mealsPerDay<1||!(waterPerPerson>0)){alert('Enter valid household figures.');return;}
-    state.settings={people,mealsPerDay,waterPerPerson};
+    state.settings={...state.settings,people,mealsPerDay,waterPerPerson,householdKcal:numberOrNull(data.get('householdKcal'))};
   }
   persist();if($('editor').open)closeDialog();
 });
