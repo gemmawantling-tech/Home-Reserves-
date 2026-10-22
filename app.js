@@ -193,15 +193,19 @@ try{const saved=JSON.parse(localStorage.getItem('home_reserves_sections_v1'));if
 function pantryViewKey(id){return JSON.stringify([categoryFilter,statusFilter,locationFilter,query,id]);}
 function pantryGroups(items){
  const groups=new Map();
- for(const c of state.categories)groups.set(c.id,{id:c.id,name:c.name,items:[]});
+ for(const c of state.categories)groups.set(c.id,{id:c.id,name:c.name,type:c.type,items:[]});
  for(const item of items){const id=item.category||'';if(!groups.has(id))groups.set(id,{id,name:'Uncategorised',items:[]});groups.get(id).items.push(item);}
  const filtering=categoryFilter!=='all'||statusFilter!=='all'||locationFilter!=='all'||query.trim()!=='';
  const kitId=familyKitCategoryId(),kitRows=familyKitPantryRows();
- return [...groups.values()].filter(g=>g.items.length||(g.id===kitId&&kitRows.length)).map(g=>{
-  const key=pantryViewKey(g.id),open=pantrySectionState.has(key)?pantrySectionState.get(key):filtering?true:pantrySectionDefaults.get(g.id)||false;
+ const isOpen=id=>{const key=pantryViewKey(id);return pantrySectionState.has(key)?pantrySectionState.get(key):filtering?true:pantrySectionDefaults.get(id)||false;};
+ const draw=g=>{
   const kit=g.id===kitId?kitRows:[],below=g.items.filter(low).length+kit.filter(r=>low({...r,optimum:r.target})).length,expiring=g.items.filter(expiresSoon).length+kit.filter(expiresSoon).length;
-  return '<details class="pantry-group" data-category="'+escapeHTML(g.id)+'" data-view="'+escapeHTML(key)+'" '+(open?'open':'')+'><summary><span class="group-title">'+escapeHTML(g.name)+'</span><span class="group-count">'+(g.items.length?g.items.length+' item type'+(g.items.length===1?'':'s'):'')+(kit.length?(g.items.length?' · ':'')+kit.length+' checklist entries':'')+'</span>'+(below?'<span class="badge low">'+below+' below optimum</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="items-grid">'+g.items.map(itemCard).join('')+'</div>'+(g.id===kitId&&kitRows.length?familyKitPantryContent(kitRows):'')+'</details>';
- }).join('');
+  const title=g.type==='food'&&g.name.toLowerCase()==='food'?'Other food — to organise':g.name;
+  return '<details class="pantry-group" data-category="'+escapeHTML(g.id)+'" data-view="'+escapeHTML(pantryViewKey(g.id))+'" '+(isOpen(g.id)?'open':'')+'><summary><span class="group-title">'+escapeHTML(title)+'</span><span class="group-count">'+(g.items.length?g.items.length+' item type'+(g.items.length===1?'':'s'):'')+(kit.length?(g.items.length?' · ':'')+kit.length+' checklist entries':'')+(!g.items.length&&!kit.length?'Empty':'')+'</span>'+(below?'<span class="badge low">'+below+' below optimum</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="items-grid">'+g.items.map(itemCard).join('')+(!g.items.length&&!kit.length?'<p class="hint">No items in this group yet.</p>':'')+'</div>'+(kit.length?familyKitPantryContent(kit):'')+'</details>';
+ };
+ const foods=[...groups.values()].filter(g=>g.type==='food'&&(!filtering||g.items.length)),foodItemsShown=foods.flatMap(g=>g.items);
+ const rootId='__food-root',food=foods.length?'<details class="pantry-group food-parent" data-category="'+rootId+'" data-view="'+escapeHTML(pantryViewKey(rootId))+'" '+(isOpen(rootId)?'open':'')+'><summary><span class="group-title">Food</span><span class="group-count">'+foodItemsShown.length+' item types · '+foods.length+' subcategories</span>'+(foodItemsShown.some(low)?'<span class="badge low">'+foodItemsShown.filter(low).length+' below optimum</span>':'')+(foodItemsShown.some(expiresSoon)?'<span class="badge red">'+foodItemsShown.filter(expiresSoon).length+' due / overdue</span>':'')+'</summary><div class="food-subcategories">'+foods.map(draw).join('')+'</div></details>':'';
+ return food+[...groups.values()].filter(g=>g.type!=='food'&&(g.items.length||(g.id===kitId&&kitRows.length))).map(draw).join('');
 }
 document.addEventListener('toggle',e=>{
  const group=e.target;if(!group.matches?.('.pantry-group')||!group.isConnected)return;
@@ -214,16 +218,16 @@ document.addEventListener('toggle',e=>{
 function setPantrySections(open){document.querySelectorAll('.pantry-group').forEach(group=>{pantrySectionState.set(group.dataset.view,open);group.open=open;});}
 function inventory(){
   const locations=[...new Set(state.items.map(i=>String(i.location||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const filtered=state.items.filter(i=>(categoryFilter==='all'||i.category===categoryFilter)&&(locationFilter==='all'||String(i.location||'').trim()===locationFilter)&&
+  const filtered=state.items.filter(i=>(categoryFilter==='all'||(categoryFilter==='all-food'&&cat(i.category)?.type==='food')||i.category===categoryFilter)&&(locationFilter==='all'||String(i.location||'').trim()===locationFilter)&&
     (statusFilter==='all'||(statusFilter==='low'&&low(i))||(statusFilter==='uncounted'&&!listed(i))||(statusFilter==='notarget'&&!targeted(i))||(statusFilter==='expiry'&&expiresSoon(i)))&&
     (i.name+' '+(i.location||'')+' '+(i.notes||'')).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>Number(low(b))-Number(low(a))||a.name.localeCompare(b.name));
   return '<section class="card"><div class="section-title"><h2>Pantry & household stock</h2><div class="actions"><button data-action="organiseFood">Organise food</button><button data-action="newCategory">+ Category</button><button data-action="newItem">+ Add item</button><button class="primary" data-action="scan">Scan barcode</button></div></div>'+
     '<p class="hint">All your household stock is here. Use Storage location to see just the pantry, freezer or another cupboard.</p><div class="filter-grid"><input id="filterSearch" class="search" aria-label="Search stock" placeholder="Search items or locations" value="'+escapeHTML(query)+'">'+
-    '<select id="filterCategory" aria-label="Select category"><option value="all">All categories</option>'+state.categories.map(c=>'<option value="'+escapeHTML(c.id)+'" '+(categoryFilter===c.id?'selected':'')+'>'+escapeHTML(c.name)+'</option>').join('')+'</select>'+
+    '<select id="filterCategory" aria-label="Select category"><option value="all">All categories</option><option value="all-food" '+(categoryFilter==='all-food'?'selected':'')+'>Food — all subcategories</option>'+state.categories.map(c=>'<option value="'+escapeHTML(c.id)+'" '+(categoryFilter===c.id?'selected':'')+'>'+escapeHTML(c.type==='food'?'Food / '+(c.name.toLowerCase()==='food'?'Other food':c.name):c.name)+'</option>').join('')+'</select>'+
     '<select id="filterStatus" aria-label="Select status">'+[['all','All levels'],['low','Below optimum'],['uncounted','Not counted'],['notarget','No optimum set'],['expiry','Expiring soon']].map(([v,l])=>'<option value="'+v+'" '+(statusFilter===v?'selected':'')+'>'+l+'</option>').join('')+'</select></div>'+
     '<label for="filterLocation">Storage location</label><select id="filterLocation"><option value="all">All locations</option>'+locations.map(location=>'<option value="'+escapeHTML(location)+'" '+(locationFilter===location?'selected':'')+'>'+escapeHTML(location)+'</option>').join('')+'</select>'+
-    '<p class="hint">'+filtered.length+' inventory item types shown; kit contents are listed separately. Tap a category to open it. Use + / − for quick stock adjustments, or Edit for an exact count.</p>'+(filtered.length||familyKitPantryRows().length?'<div class="actions"><button data-action="expandPantry">Expand all</button><button data-action="collapsePantry">Collapse all</button></div>':'')+'</section>'+
-    (filtered.length||familyKitPantryRows().length?pantryGroups(filtered):'<section class="card empty">'+(state.items.length?'No items match your filters.':'No inventory yet. Add your first item, or load starter items in Settings.')+'</section>');
+    '<p class="hint">'+filtered.length+' inventory item types shown; kit contents are listed separately. Open Food to browse its subcategories, then open a group to see items. Use + / − for quick stock adjustments, or Edit for an exact count.</p>'+(filtered.length||familyKitPantryRows().length||(categoryFilter==='all'&&statusFilter==='all'&&locationFilter==='all'&&!query.trim()&&state.categories.some(c=>c.type==='food'))?'<div class="actions"><button data-action="expandPantry">Expand all</button><button data-action="collapsePantry">Collapse all</button></div>':'')+'</section>'+
+    (filtered.length||familyKitPantryRows().length||(categoryFilter==='all'&&statusFilter==='all'&&locationFilter==='all'&&!query.trim()&&state.categories.some(c=>c.type==='food'))?pantryGroups(filtered):'<section class="card empty">'+(state.items.length?'No items match your filters.':'No inventory yet. Add your first item, or load starter items in Settings.')+'</section>');
 }
 function expiring(){
  const items=InventoryCore.expiryItems(state.items,expiryRange);
