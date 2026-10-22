@@ -8,7 +8,7 @@ function apply(data,entries){const next=JSON.parse(JSON.stringify(data));next.ca
 function totals(items){return items.reduce((t,i)=>{const q=Math.max(0,Number(i.current)||0),p=q*(Number(i.portionsPerPack)||0);t.quantity+=q;t[i.portionType==='meal'?'meals':i.portionType==='side'?'sides':'ingredients']+=p;if(i.packUnit==='g')t.grams+=q*(Number(i.packSize)||0);if(i.packUnit==='ml')t.ml+=q*(Number(i.packSize)||0);return t;},{quantity:0,meals:0,sides:0,ingredients:0,grams:0,ml:0});}
 const EXTRA_CATEGORIES=[{id:'drinks',name:'Drinks',type:'other'},{id:'snacks',name:'Snacks',type:'food'},{id:'treats',name:'Treats',type:'food'},{id:'alcohol',name:'Alcohol',type:'other'}];
 const FOOD_CATEGORIES=[{id:'cooking-sauces',name:'Cooking sauces',type:'food'},{id:'sauces',name:'Sauces & condiments',type:'food'},{id:'carbohydrates',name:'Carbohydrates',type:'food'},{id:'vegetables',name:'Vegetables',type:'food'},{id:'proteins',name:'Proteins',type:'food'},{id:'legumes',name:'Legumes & pulses',type:'food'},{id:'ready-meals',name:'Ready meals',type:'food'},{id:'fruit',name:'Fruit',type:'food'},{id:'dairy',name:'Dairy & alternatives',type:'food'},{id:'baking',name:'Baking ingredients',type:'food'},{id:'oils',name:'Oils & fats',type:'food'}];
-const MAIN_GROUPS=[{id:'food',name:'Food'},{id:'drinks',name:'Drinks'},{id:'health',name:'Health & hygiene'},{id:'power',name:'Power & equipment'},{id:'safety',name:'Safety & travel'},{id:'other',name:'Other supplies'}];
+const MAIN_GROUPS=[{id:'food',name:'Food'},{id:'drinks',name:'Drinks'},{id:'health',name:'Health & hygiene'},{id:'power',name:'Power & equipment'},{id:'safety',name:'Safety & travel'},{id:'other',name:'Other supplies'}].sort((a,b)=>a.name.localeCompare(b.name,'en-GB',{sensitivity:'base',numeric:true}));
 function categoryGroup(c){
  if(!c)return 'other';
  if(MAIN_GROUPS.some(g=>g.id===c.mainGroup))return c.mainGroup;
@@ -20,7 +20,12 @@ function categoryGroup(c){
  if(['safety','car'].includes(id)||/safety|warmth|travel|vehicle|transport|car supplies/.test(name))return 'safety';
  return 'other';
 }
-function categoryLabel(c){const parent=MAIN_GROUPS.find(g=>g.id===categoryGroup(c));return parent.name+' / '+(c.type==='food'&&String(c.name).toLowerCase()==='food'?'Other food':c.id==='drinks'&&String(c.name).toLowerCase()==='drinks'?'Other drinks':c.name);}
+function categoryName(c){return c.id==='drinks'&&String(c.name).toLowerCase()==='drinks'?'Other drinks':c.name;}
+function generalFood(c){return c?.type==='food'&&String(c.name).trim().toLowerCase()==='food'&&categoryGroup(c)==='food';}
+function alphabetical(a,b){return String(a).localeCompare(String(b),'en-GB',{sensitivity:'base',numeric:true});}
+function categoryLabel(c){const parent=MAIN_GROUPS.find(g=>g.id===categoryGroup(c));return generalFood(c)?parent.name:parent.name+' / '+categoryName(c);}
+function sortedCategories(categories){return categories.slice().sort((a,b)=>alphabetical(categoryLabel(a),categoryLabel(b)));}
+
 function migrateCategories(data){
  const add=rows=>{for(const category of rows){if(!data.categories.some(c=>c.id===category.id||String(c.name).trim().toLowerCase()===category.name.toLowerCase()))data.categories.push({...category});}};
  if(!(data.categoryUpdate>=1)){add(EXTRA_CATEGORIES);data.categoryUpdate=1;}
@@ -60,5 +65,5 @@ function expiryItems(items,range='30',today=new Date()){
  return expanded.filter(i=>{if(!(Number(i.current)>0))return false;const days=expiryDays(i.expiry,today);return range==='undated'?days===null:days!==null&&(range==='all'||(range==='expired'?days<0:days<=Number(range)));}).sort((a,b)=>String(a.expiry||'').localeCompare(String(b.expiry||''))||String(a.name).localeCompare(String(b.name)));
 }
 class ScanGate{constructor(){this.locked=false;}accept(){if(this.locked)return false;this.locked=true;return true;}reset(){this.locked=false;}}
-const api={barcode,adjust,apply,totals,ScanGate,MAIN_GROUPS,categoryGroup,categoryLabel,migrateCategories,EXTRA_CATEGORIES,FOOD_CATEGORIES,suggestFoodCategory,parseExpiry,expiryDays,expiryItems};if(typeof module!=='undefined')module.exports=api;else root.InventoryCore=api;
+const api={barcode,adjust,apply,totals,ScanGate,MAIN_GROUPS,categoryGroup,categoryLabel,categoryName,generalFood,alphabetical,sortedCategories,migrateCategories,EXTRA_CATEGORIES,FOOD_CATEGORIES,suggestFoodCategory,parseExpiry,expiryDays,expiryItems};if(typeof module!=='undefined')module.exports=api;else root.InventoryCore=api;
 })(typeof window==='undefined'?globalThis:window);
