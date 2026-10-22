@@ -101,7 +101,7 @@ function field(name,label,value='',extra=''){
   return '<div class="field"><label for="f_'+name+'">'+label+'</label><input id="f_'+name+'" name="'+name+'" value="'+escapeHTML(value)+'" '+extra+'></div>';
 }
 function displayDate(value){try{const iso=InventoryCore.parseExpiry(value);return iso?iso.split('-').reverse().join('/'):'';}catch{return String(value||'');}}
-function expiryField(value=''){return field('expiry','Use-by / best-before date (optional)',displayDate(value),'type="text" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="DD/MM/YYYY"')+'<p class="hint">Type DD/MM/YYYY or 8 digits (25122027). Leave blank if unknown. One date per stock line: record the earliest date still in stock.</p>';}
+function expiryField(value=''){return field('expiry','Use-by / best-before date (optional)',displayDate(value),'type="text" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="DD/MM/YYYY"')+'<p class="hint">Type DD/MM/YYYY or 8 digits (25122027). Leave blank if unknown. Add stock with its own date; use Manage batches to correct existing dates.</p>';}
 function dropdown(name,label,options,selected){
   return '<div class="field"><label for="f_'+name+'">'+label+'</label><select id="f_'+name+'" name="'+name+'">'+options.map(([id,text])=>'<option value="'+escapeHTML(id)+'" '+(id===selected?'selected':'')+'>'+escapeHTML(text)+'</option>').join('')+'</select></div>';
 }
@@ -124,7 +124,7 @@ function editItem(id){
   field('name','Item name',i?.name||'','required maxlength="120" placeholder="e.g. Lentils"')+
   field('current','Quantity on hand ('+escapeHTML(i?.unit||'packs')+')',i?i.current??'':1,'type="number" min="0" step="any" placeholder="Not counted"')+
   '<div class="split">'+dropdown('category','Category',state.categories.map(c=>[c.id,c.name]),category)+field('location','Storage location',i?i.location||'':defaults.location,'maxlength="90" placeholder="Pantry"')+'</div>'+
-  expiryField(i?.expiry)+portionReviewNote(category,i?.portionsPerPack)+formActions('Item',i?.id).replace('modal-actions','modal-actions entry-actions')+
+  (i&&StockBatches.read(i).length>1?'<input type="hidden" name="expiry" value="'+escapeHTML(i.expiry||'')+'"><p class="hint">Multiple expiry dates: use Manage batches to edit them.</p><button type="button" data-action="manageBatches" data-id="'+escapeHTML(i.id)+'">Manage batches</button>':expiryField(i?.expiry))+portionReviewNote(category,i?.portionsPerPack)+formActions('Item',i?.id).replace('modal-actions','modal-actions entry-actions')+
   '<details class="entry-section" id="itemPortions"><summary>Portions and pack size</summary><div class="split">'+field('packSize','Weight / volume per pack',i?.packSize??'','type="number" min="0" step="any"')+dropdown('packUnit','Pack unit',[['g','grams'],['ml','millilitres']],i?.packUnit||'g')+'</div>'+
   field('unit','Counted in',i?.unit||'packs','required maxlength="32" placeholder="packs / tins / bottles"')+
   '<div class="split">'+field('portionsPerPack','Portions per pack',i?.portionsPerPack??'','type="number" min="0" step="any"')+dropdown('portionType','These portions are',[['ingredient','Ingredient portions'],['side','Side portions'],['meal','Complete meal portions']],i?.portionType||'ingredient')+'</div>'+
@@ -174,7 +174,7 @@ function overview(){
   (!state.items.length?'<section class="card"><h2>Start your inventory</h2><p class="small muted">Add the items you already have, or load a starter list and fill in quantities as you do a stock check.</p><div class="actions"><button class="primary" data-action="newItem">+ Add first item</button><button data-action="starter">Load starter list</button></div></section>':'');
 }
 function itemCard(i){
-  const c=cat(i.category),expiry=daysToExpiry(i),below=low(i),max=targeted(i)?Number(i.optimum):0;
+  const c=cat(i.category),expiry=daysToExpiry(i),below=i.batchEntry?low({...i,current:i.productCurrent}):low(i),max=targeted(i)?Number(i.optimum):0;
   let badges='<span class="badge">'+escapeHTML(c?.name||'Other')+'</span>';
   if(cat(i.category)?.type==='food'&&!(Number(i.portionsPerPack)>0))badges+='<span class="badge">Portions to review</span>';
   if(!listed(i))badges+='<span class="badge low">Not yet counted</span>';
@@ -182,10 +182,10 @@ function itemCard(i){
   else if(!targeted(i))badges+='<span class="badge">No target</span>';
   if(expiry!==null&&expiry<=30)badges+='<span class="badge red">'+(expiry<0?'Expired':expiry===0?'Expires today':'Expires in '+expiry+' days')+'</span>';
   return '<article class="item"><div class="item-header"><div><div class="item-title">'+escapeHTML(i.name)+'</div>'+badges+'</div><button class="text-button" data-action="editItem" data-id="'+escapeHTML(i.id)+'">Edit</button></div>'+
-    (listed(i)&&max>0?'<div class="meter '+(below?'low':'')+'"><span style="width:'+Math.min(100,amount(i)*100/max)+'%"></span></div>':'')+
+    (!i.batchEntry&&listed(i)&&max>0?'<div class="meter '+(below?'low':'')+'"><span style="width:'+Math.min(100,amount(i)*100/max)+'%"></span></div>':'')+
     (i.category==='firstaid'&&/kit/i.test(i.name)?familyKitButton():'')+'<div class="item-bottom"><div class="counts">Current: <strong>'+(listed(i)?fmt(i.current):'—')+'</strong> '+escapeHTML(i.unit)+'<br>Optimum: <strong>'+(targeted(i)?fmt(i.optimum):'Not set')+'</strong> '+escapeHTML(i.unit)+
     (i.portionsPerPack?'<br>'+fmt(amount(i)*i.portionsPerPack)+' '+escapeHTML(i.portionType||'ingredient')+' portions'+(['estimated','calculated'].includes(i.portionSource)?' (estimate)':''):'')+(i.location?'<br>📍 '+escapeHTML(i.location):'')+(i.expiry?'<br>Use-by / best-before: '+escapeHTML(displayDate(i.expiry)):'')+(i.notes?'<br>'+escapeHTML(i.notes):'')+'</div>'+
-    '<div class="stepper"><button type="button" data-action="minus" data-id="'+escapeHTML(i.id)+'" aria-label="Use one '+escapeHTML(i.name)+'" '+(!listed(i)||amount(i)<=0?'disabled':'')+'>−</button><strong>'+(listed(i)?fmt(i.current):'—')+'</strong><button type="button" data-action="plus" data-id="'+escapeHTML(i.id)+'" aria-label="Add one '+escapeHTML(i.name)+'">+</button></div></div></article>';
+    (i.batchEntry?'<span class="hint">Batch quantity · product total '+fmt(i.productCurrent)+' '+escapeHTML(i.unit)+'</span>':'<div class="stepper"><button type="button" data-action="minus" data-id="'+escapeHTML(i.id)+'" aria-label="Use one '+escapeHTML(i.name)+'" '+(!listed(i)||amount(i)<=0?'disabled':'')+'>−</button><strong>'+(listed(i)?fmt(i.current):'—')+'</strong><button type="button" data-action="plus" data-id="'+escapeHTML(i.id)+'" aria-label="Add one '+escapeHTML(i.name)+'">+</button></div>')+'</div>'+batchSummary(i)+'</article>';
 }
 const pantrySectionState=new Map();
 let pantrySectionDefaults=new Map();
@@ -226,7 +226,7 @@ function inventory(){
 }
 function expiring(){
  const items=InventoryCore.expiryItems(state.items,expiryRange);
- return '<section class="card hero"><div class="eyebrow">USE FIRST</div><h2>Expiring stock</h2><p class="hint">In-stock products, earliest date first. Includes every storage location. Used-up and uncounted items are excluded.</p><label for="expiryRange">Show products</label><select id="expiryRange">'+[['7','Overdue and next 7 days'],['30','Overdue and next 30 days'],['90','Overdue and next 90 days'],['expired','Past the recorded date'],['all','All dated stock'],['undated','No valid date recorded']].map(([value,label])=>'<option value="'+value+'" '+(expiryRange===value?'selected':'')+'>'+label+'</option>').join('')+'</select><p role="status">'+items.length+' product types</p><p class="hint">Follow the date type printed on the pack. Use-by dates concern safety; best-before dates concern quality. The app stores one earliest date per stock line.</p></section>'+(items.length?'<div class="items-grid">'+items.map(itemCard).join('')+'</div>':'<section class="card empty">No pantry stock matches this date range.</section>')+firstAidExpiryCards();
+ return '<section class="card hero"><div class="eyebrow">USE FIRST</div><h2>Expiring stock</h2><p class="hint">In-stock batches, earliest date first. Includes every storage location. Used-up and uncounted items are excluded.</p><label for="expiryRange">Show products</label><select id="expiryRange">'+[['7','Overdue and next 7 days'],['30','Overdue and next 30 days'],['90','Overdue and next 90 days'],['expired','Past the recorded date'],['all','All dated stock'],['undated','No valid date recorded']].map(([value,label])=>'<option value="'+value+'" '+(expiryRange===value?'selected':'')+'>'+label+'</option>').join('')+'</select><p role="status">'+items.length+' stock entries</p><p class="hint">Follow the date type printed on the pack. Use-by dates concern safety; best-before dates concern quality. Each expiry batch is shown separately here; Pantry keeps them under one product card.</p></section>'+(items.length?'<div class="items-grid">'+items.map(itemCard).join('')+'</div>':'<section class="card empty">No pantry stock matches this date range.</section>')+firstAidExpiryCards();
 }
 function meals(){
   const plan=calculateMeals(),people=setting('people',4),perDay=setting('mealsPerDay',1),days=plan.portions/(people*perDay);
@@ -252,7 +252,7 @@ function settings(){
     backupStatus()+'<section class="card"><h2>Starter list and backups</h2><p class="small muted">Load an editable list of common items without inventing quantities. You can add more categories and item types whenever you need.</p>'+
     '<div class="actions"><button data-action="starter">+ Load starter items</button><button data-action="export">Export backup</button><button data-action="csv">Export CSV</button><button data-action="import">Import backup</button></div>'+
     '<input id="importInput" type="file" accept="application/json,.json"><p class="hint">JSON backup includes recipes and settings. CSV is a readable inventory list. Import replaces your current inventory after confirmation.</p></section>'+
-    '<section class="card"><h2>Useful limitations</h2><p class="small muted">All counts stay on this browser, not automatically synced to your husband’s phone or GitHub. A single expiry date represents the earliest item in that stock line — use separate stock lines if different batches expire on different dates. Preparedness is about practical supplies, not chasing a perfect score.</p></section>';
+    '<section class="card"><h2>Useful limitations</h2><p class="small muted">All counts stay on this browser, not automatically synced to your husband’s phone or GitHub. Products can contain multiple expiry batches. Use Manage batches to split counts by date; quick stock use removes the earliest date first. Preparedness is about practical supplies, not chasing a perfect score.</p></section>';
 }
 function render(){
   $('message').innerHTML=message?'<div class="message warning">'+escapeHTML(message)+'</div>':'';
@@ -294,7 +294,7 @@ document.addEventListener('click',e=>{
     case 'close':closeDialog();break;
     case 'plus':case 'minus':{
       const i=itemById(id);if(!i)break;
-      i.current=Math.max(0,Math.round((amount(i)+(action==='plus'?1:-1))*1000)/1000);persist();break;
+      Object.assign(i,StockBatches.change(i,Math.min(1,action==='minus'?amount(i):1),action==='plus'?'add':'use',''));persist();break;
     }
     case 'addIngredient':$('ingredientRows').insertAdjacentHTML('beforeend',ingredientRow());break;
     case 'removeIngredient':button.closest('.ingredient-row')?.remove();break;
@@ -340,8 +340,8 @@ document.addEventListener('submit',e=>{
     let expiry;try{expiry=InventoryCore.parseExpiry(data.get('expiry'));}catch(err){alert(err.message);return;}
     const name=String(data.get('name')||'').trim(),category=String(data.get('category')),unit=String(data.get('unit')||'').trim();
     if(!name||!unit||!cat(category)){alert('Please provide a name, unit and valid category.');return;}
-    const item={...(id?itemById(id):{}),id:id||uid(),name,category,unit,portionsPerPack:numberOrNull(data.get('portionsPerPack')),portionType:String(data.get('portionType')||'ingredient'),current:numberOrNull(data.get('current')),optimum:numberOrNull(data.get('optimum')),location:String(data.get('location')||'').trim(),expiry,litresPerUnit:numberOrNull(data.get('litresPerUnit')),notes:String(data.get('notes')||'').trim()};
-    item.packSize=numberOrNull(data.get('packSize'));item.packUnit=String(data.get('packUnit')||'g');state.entryDefaults={category:item.category,location:item.location};
+    let item={...(id?itemById(id):{}),id:id||uid(),name,category,unit,portionsPerPack:numberOrNull(data.get('portionsPerPack')),portionType:String(data.get('portionType')||'ingredient'),current:numberOrNull(data.get('current')),optimum:numberOrNull(data.get('optimum')),location:String(data.get('location')||'').trim(),expiry,litresPerUnit:numberOrNull(data.get('litresPerUnit')),notes:String(data.get('notes')||'').trim()};
+    item=StockBatches.reconcile(id?itemById(id):null,item);item.packSize=numberOrNull(data.get('packSize'));item.packUnit=String(data.get('packUnit')||'g');state.entryDefaults={category:item.category,location:item.location};
     if(!id||item.portionsPerPack!==itemById(id)?.portionsPerPack)item.portionSource='manual';if(id){const at=state.items.findIndex(i=>i.id===id);if(at<0)return;state.items[at]=item;}else state.items.push(item);
   }else if(form.id==='categoryForm'){
     const name=String(data.get('name')||'').trim(),type=String(data.get('type'));
