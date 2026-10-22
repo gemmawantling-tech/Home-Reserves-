@@ -34,7 +34,7 @@ const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const fmt = value => Number(value).toLocaleString('en-GB',{maximumFractionDigits:2});
 const uid = () => 'id'+Date.now().toString(36)+Math.random().toString(36).slice(2,9);
-const newData = () => ({version:1,categories:JSON.parse(JSON.stringify(INITIAL_CATEGORIES)),items:[],recipes:[],settings:{people:4,mealsPerDay:1,waterPerPerson:3}});
+const newData = () => ({version:1,categories:JSON.parse(JSON.stringify(INITIAL_CATEGORIES)),items:[],recipes:[],settings:{people:4,waterPerPerson:3}});
 let state, activeTab = 'overview', categoryFilter = 'all', statusFilter = 'all', query = '', message = '', locationFilter='all', expiryRange='30';
 function validData(d){
   if (!d || !Array.isArray(d.categories) || !Array.isArray(d.items) || !Array.isArray(d.recipes) || typeof d.settings !== 'object') throw Error('Not a valid Home Reserves backup');
@@ -64,39 +64,6 @@ function numberOrNull(value){
   const n=Number(value);return Number.isFinite(n)&&n>=0?n:null;
 }
 function stockStatus(i){return !listed(i)?'uncounted':low(i)?'low':!targeted(i)?'notarget':'ok';}
-// A batch requires ALL its ingredients; recipes share one global pool of stock.
-function requirements(recipe){
-  const needed={};
-  for(const ing of recipe.ingredients||[]){
-    const q=Number(ing.amount);
-    if(q>0 && Number.isFinite(q)) needed[ing.itemId]=(needed[ing.itemId]||0)+q;
-  }
-  return needed;
-}
-function calculateMeals(){
-  const remaining={};state.items.forEach(i=>remaining[i.id]=i.portionType==='meal'||cat(i.category)?.type!=='food'?0:amount(i));
-  const allocated={};state.recipes.forEach(r=>allocated[r.id]=0);
-  const individually={};
-  state.recipes.forEach(r=>{
-    const req=requirements(r),ids=Object.keys(req);
-    individually[r.id]=ids.length ? Math.max(0,Math.floor(Math.min(...ids.map(id=>itemById(id)?remaining[id]/req[id]:0))+1e-9)):0;
-  });
-  let made=true, passes=0;
-  // Fair round-robin allocation: one batch per available recipe each round.
-  while(made && passes < 10000){
-    made=false; passes++;
-    for(const r of state.recipes){
-      const req=requirements(r),ids=Object.keys(req);
-      if(ids.length && ids.every(id=>itemById(id)&&remaining[id]+1e-9 >= req[id])){
-        ids.forEach(id=>remaining[id]-=req[id]);
-        allocated[r.id]++;
-        made=true;
-      }
-    }
-  }
-  const portions=InventoryCore.totals(foodItems()).meals+state.recipes.reduce((sum,r)=>sum+(allocated[r.id]||0)*(Number(r.portions)||0),0);
-  return {allocated,individually,portions,capped:passes>=10000};
-}
 function field(name,label,value='',extra=''){
   return '<div class="field"><label for="f_'+name+'">'+label+'</label><input id="f_'+name+'" name="'+name+'" value="'+escapeHTML(value)+'" '+extra+'></div>';
 }
@@ -115,7 +82,7 @@ function entryDefaults(){
  const saved=queued||state.entryDefaults||{};
  return {category:cat(categoryFilter)?categoryFilter:cat(saved.category)?saved.category:state.categories.find(c=>c.type==='food')?.id||state.categories[0]?.id,location:saved.location??'Pantry'};
 }
-function portionReviewNote(category,portions){return cat(category)?.type==='food'&&!(Number(portions)>0)?'<p class="hint portion-review">Portions not set. You can save now and review them later; they will not add complete-meal coverage.</p>':'';}
+function portionReviewNote(category,portions){return cat(category)?.type==='food'&&!(Number(portions)>0)?'<p class="hint portion-review">Portions not set. You can save now and review them later; food days use calories, not portion counts.</p>':'';}
 function editItem(id){
  const i=id?itemById(id):null;
  if(!state.categories.length){notify('Create a category before adding stock.');showTab('settings');return;}
@@ -140,35 +107,19 @@ function editCategory(id){
     field('name','Category name',c?.name||'','required maxlength="90" placeholder="e.g. Pet supplies"')+
     dropdown('type','Category used for',[['other','General supplies'],['food','Recipe ingredients'],['water','Drinking water']],c?.type||'other')+
     dropdown('mainGroup','Show under main group',[['','Automatic grouping'],...InventoryCore.MAIN_GROUPS.map(g=>[g.id,g.name])],c?.mainGroup||'')+
-    '<p class="hint">Main groups organise your Pantry. Category use determines food and water calculations. Food categories appear when building meals. Water categories contribute to the water estimate.</p>'+formActions('Category',c?.id)+'</form>');
-}
-function ingredientRow(itemId='',quantity=''){
-  return '<div class="ingredient-row"><select class="ingredientId" aria-label="Ingredient">'+foodItems().map(i=>'<option value="'+escapeHTML(i.id)+'" '+(i.id===itemId?'selected':'')+'>'+escapeHTML(i.name)+' ('+escapeHTML(i.unit)+')</option>').join('')+'</select><input class="ingredientQty" type="number" min="0.001" step="any" value="'+escapeHTML(quantity)+'" placeholder="Qty" aria-label="Quantity used per batch"><button type="button" data-action="removeIngredient" aria-label="Remove ingredient">×</button></div>';
-}
-function editRecipe(id){
-  if (!foodItems().length){showTab('inventory');notify('Add food items to the inventory first, then build a meal from those ingredients.');return;}
-  const r=state.recipes.find(r=>r.id===id);
-  editDialog('<h2>'+(r?'Edit meal':'Add meal')+'</h2><form id="recipeForm" data-id="'+escapeHTML(r?.id||'')+'">'+
-    field('name','Meal name',r?.name||'','required maxlength="120" placeholder="e.g. Bean chilli with rice"')+
-    field('portions','Portions per batch',r?.portions||4,'required type="number" min="1" max="100" step="1"')+
-    '<label>Ingredients needed for ONE batch</label><p class="hint">Quantities use the same units as inventory. If each batch needs two tins of beans, enter 2.</p><div id="ingredientRows">'+
-    (r?.ingredients?.length?r.ingredients.map(ing=>ingredientRow(ing.itemId,ing.amount)).join(''):ingredientRow())+'</div>'+
-    '<button type="button" class="light-button" data-action="addIngredient">+ Ingredient</button>'+formActions('Recipe',r?.id)+'</form>');
+    '<p class="hint">Main groups organise your Pantry. Category use determines food and water calculations. Food categories are available for recipe ingredient links. Water categories contribute to the water estimate.</p>'+formActions('Category',c?.id)+'</form>');
 }
 function stat(value,label){return '<div class="stat"><div class="value">'+value+'</div><div class="label">'+label+'</div></div>';}
 function stats(){
   const counted=state.items.filter(listed).length,below=state.items.filter(low).length,exp=state.items.filter(expiresSoon).length;
-  return coverageSummary()+'<div class="stat-grid">'+stat(fmt(counted)+'<span class="small muted"> / '+fmt(state.items.length)+'</span>','Item types counted')+stat(fmt(below),'Below your optimum')+stat(fmt(exp),'Expiring or expired')+stat(fmt(calculateMeals().portions),'Planned food portions')+'</div>';
+  return coverageSummary()+'<div class="stat-grid">'+stat(fmt(counted)+'<span class="small muted"> / '+fmt(state.items.length)+'</span>','Item types counted')+stat(fmt(below),'Below your optimum')+stat(fmt(exp),'Expiring or expired')+stat(fmt(foodItems().filter(i=>amount(i)>0).length),'Food types in stock')+'</div>';
 }
 function backupStatus(){return '<section class="card"><h2>Protect your stocktake</h2><p class="hint">'+(state.backupRequestedAt?'Last backup download requested: '+escapeHTML(new Date(state.backupRequestedAt).toLocaleDateString('en-GB'))+'. Check that the file is saved.':'No backup download recorded yet.')+' Keep a copy outside this phone. Backups include stock, product details, portions, categories, meal plans and your recipe notebook. Household sync is not connected.</p><button data-action="export">Export backup</button></section>';}
 function overview(){
-  const m=calculateMeals(),people=setting('people',4),meals=setting('mealsPerDay',1),days=m.portions/(people*meals),water=waterLitres(),waterDays=water/(people*setting('waterPerPerson',3));
+  const people=setting('people',4),water=waterLitres(),waterDays=water/(people*setting('waterPerPerson',3));
   const below=state.items.filter(low).sort((a,b)=>a.name.localeCompare(b.name));
   return '<section class="card hero"><div class="eyebrow">YOUR HOME AT A GLANCE</div><h2>Everything in one place</h2><p class="small muted">Track what you have, set your own comfortable levels and see what needs using or checking. No automatic shopping targets.</p><button data-action="reviewGaps">Identify gaps</button></section>'+gapsSummary()+foodCoverageCard()+stats()+
-  '<section class="card"><div class="section-title"><h2>Meal plan and water coverage</h2><button class="text-button" data-tab="meals">Meal details →</button></div>'+
-  '<div class="split"><div><div class="large-number">'+(state.recipes.length||m.portions?fmt(days):'—')+'</div><div class="small muted">Days of tracked meals only</div><div class="small"><strong>'+(state.recipes.length||m.portions?fmt(days/7)+' weeks':'Add recipes to estimate')+'</strong></div></div>'+
-  '<div><div class="large-number">'+(water>0?fmt(waterDays):'—')+'</div><div class="small muted">Water days</div><div class="small"><strong>'+fmt(water)+' litres logged</strong></div></div></div>'+
-  '<p class="hint">Based on '+fmt(people)+' people, '+fmt(meals)+' tracked meal(s) per person daily and '+fmt(setting('waterPerPerson',3))+' litres of water per person daily. These are approximate planning figures, not guarantees of a nutritionally complete diet or water for washing.</p></section>'+
+  '<section class="card"><h2>Water coverage</h2><div class="large-number">'+(water>0?fmt(waterDays):'—')+'</div><p class="small muted">Water days · '+fmt(water)+' litres logged</p><p class="hint">Based on '+fmt(people)+' people and '+fmt(setting('waterPerPerson',3))+' litres per person daily for drinking and basic cooking. Does not cover washing.</p></section>'+
   '<section class="card"><div class="section-title"><h2>Below your optimum</h2><button class="text-button" data-tab="inventory">All stock →</button></div>'+
   (below.length?below.slice(0,7).map(i=>'<div class="row-line"><span>'+escapeHTML(i.name)+'</span><span class="small nowrap">'+fmt(i.current)+' / '+fmt(i.optimum)+' '+escapeHTML(i.unit)+'</span></div>').join(''):'<div class="empty">Nothing currently recorded below its target.</div>')+
   (below.length>7?'<p class="hint">Plus '+(below.length-7)+' more items.</p>':'')+'</section>'+
@@ -237,27 +188,12 @@ function expiring(){
  const items=InventoryCore.expiryItems(state.items,expiryRange);
  return '<section class="card hero"><div class="eyebrow">USE FIRST</div><h2>Expiring stock</h2><p class="hint">In-stock batches, earliest date first. Includes every storage location. Used-up and uncounted items are excluded.</p><label for="expiryRange">Show products</label><select id="expiryRange">'+[['7','Overdue and next 7 days'],['30','Overdue and next 30 days'],['90','Overdue and next 90 days'],['expired','Past the recorded date'],['all','All dated stock'],['undated','No valid date recorded']].map(([value,label])=>'<option value="'+value+'" '+(expiryRange===value?'selected':'')+'>'+label+'</option>').join('')+'</select><p role="status">'+items.length+' stock entries</p><p class="hint">Follow the date type printed on the pack. Use-by dates concern safety; best-before dates concern quality. Each expiry batch is shown separately here; Pantry keeps them under one product card.</p></section>'+(items.length?'<div class="items-grid">'+items.map(itemCard).join('')+'</div>':'<section class="card empty">No pantry stock matches this date range.</section>')+firstAidExpiryCards();
 }
-function meals(){
-  const plan=calculateMeals(),people=setting('people',4),perDay=setting('mealsPerDay',1),days=plan.portions/(people*perDay);
-  return '<section class="card hero"><div class="eyebrow">MEAL CAPACITY</div><h2>How many meals can you make?</h2>'+
-    '<div class="stat-grid">'+stat(fmt(plan.portions),'Individual portions')+stat(fmt(Math.floor(plan.portions/people)),'Complete family meals')+stat(fmt(days),'Days of tracked meals')+stat(fmt(days/7),'Weeks of tracked meals')+'</div>'+
-    '<p class="hint">For '+fmt(people)+' people, '+fmt(perDay)+' tracked meal(s) per person per day. Each ingredient is allocated once across the recipes below to avoid counting the same tin or pouch twice.</p></section>'+
-    '<section class="card"><div class="section-title"><h2>Your meals</h2><button class="primary" data-action="newRecipe">+ Meal</button></div>'+
-    (state.recipes.length?state.recipes.map((r,index)=>'<article class="meal"><div class="line"><div><h3>'+escapeHTML(r.name)+'</h3><div class="small muted">'+fmt(r.portions)+' portions per batch</div></div><button class="text-button" data-action="editRecipe" data-id="'+escapeHTML(r.id)+'">Edit</button></div>'+
-      '<ul>'+r.ingredients.map(ing=>{const i=itemById(ing.itemId);return '<li>'+fmt(ing.amount)+' '+escapeHTML(i?.unit||'units')+' '+escapeHTML(i?.name||'(item removed)')+'</li>';}).join('')+'</ul>'+
-      '<div class="line"><div class="small"><strong>'+fmt(plan.allocated[r.id]||0)+' batches</strong> in shared plan<br><span class="muted">Up to '+fmt(plan.individually[r.id]||0)+' if made on its own</span></div>'+
-      '<div class="recipe-tools"><button data-action="recipeUp" data-id="'+escapeHTML(r.id)+'" title="Move earlier" aria-label="Move '+escapeHTML(r.name)+' earlier" '+(index===0?'disabled':'')+'>↑</button><button data-action="recipeDown" data-id="'+escapeHTML(r.id)+'" title="Move later" aria-label="Move '+escapeHTML(r.name)+' later" '+(index===state.recipes.length-1?'disabled':'')+'>↓</button></div></div></article>').join(''):
-      '<div class="empty">To calculate meals, add food items to Inventory, then create a meal listing the ingredients needed for one batch and how many portions it makes.</div>')+
-    '<p class="hint">The plan rotates through recipes from top to bottom, making one batch each when ingredients are available. Change the order with the arrows; your result may change with recipe choices and priorities. Portions do not measure calorie or nutritional adequacy.</p>'+(plan.capped?'<p class="message warning">Calculation stopped at its batch limit. Extremely large stock quantities may be undercounted.</p>':'')+'</section>'+
-    '<section class="card"><h2>Family meal planning</h2><p class="small muted">Start with meals you really make — for example, pasta and sauce, bean chilli with rice, or lentil soup. Include ALL key ingredients in the recipe. The app will show your possible batch count from your current stock. Change household size or meals per day in Settings.</p><button data-tab="inventory">Add food inventory →</button></section>';
-}
 function settings(){
-  return '<section class="card"><h2>Household planning assumptions</h2><form id="settingsForm"><div class="split">'+
+  return '<section class="card"><h2>Household planning assumptions</h2><form id="settingsForm">'+
     field('people','People',setting('people',4),'required type="number" min="1" max="30" step="1"')+
-    field('mealsPerDay','Tracked meals per person / day',setting('mealsPerDay',1),'required type="number" min="1" max="6" step="1"')+'</div>'+
     field('householdKcal','Household kcal per day (optional override)',state.settings.householdKcal??'','type="number" min="1" step="any" placeholder="Default: 2,000 × people"')+'<p class="hint">Food days use known stock calories divided by this daily total. Leave blank for the provisional 2,000 kcal per person assumption. Needs vary by age, body size and activity; adjust for your household, including children. This is an energy estimate, not a balanced-diet assessment.</p>'+
     field('waterPerPerson','Water litres per person / day',setting('waterPerPerson',3),'required type="number" min="0.1" max="20" step="0.1"')+
-    '<p class="hint">Select 1 tracked meal a day if you are only planning dinners, or 3 if you have included breakfast, lunch and dinner. The water estimate covers drinking and basic cooking only.</p><button class="primary" type="submit">Save assumptions</button></form></section>'+
+    '<p class="hint">The water estimate covers drinking and basic cooking only.</p><button class="primary" type="submit">Save assumptions</button></form></section>'+
     '<section class="card"><div class="section-title"><h2>My categories</h2><button data-action="newCategory">+ Category</button></div>'+state.categories.map(c=>'<div class="row-line"><div><strong>'+escapeHTML(c.name)+'</strong><div class="tiny muted">'+escapeHTML(InventoryCore.MAIN_GROUPS.find(g=>g.id===InventoryCore.categoryGroup(c)).name)+' / '+(c.type==='food'?'Food for recipes':c.type==='water'?'Water volumes':'General stock')+' · '+state.items.filter(i=>i.category===c.id).length+' item types</div></div><button class="text-button" data-action="editCategory" data-id="'+escapeHTML(c.id)+'">Edit</button></div>').join('')+'</section>'+
     backupStatus()+'<section class="card"><h2>Starter list and backups</h2><p class="small muted">Load an editable list of common items without inventing quantities. You can add more categories and item types whenever you need.</p>'+
     '<div class="actions"><button data-action="starter">+ Load starter items</button><button data-action="export">Export backup</button><button data-action="csv">Export CSV</button><button data-action="import">Import backup</button></div>'+
@@ -266,16 +202,10 @@ function settings(){
 }
 function render(){
   $('message').innerHTML=message?'<div class="message warning">'+escapeHTML(message)+'</div>':'';
-  $('screen').innerHTML=activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='expiry'?expiring():activeTab==='recipes'?recipeBookScreen():activeTab==='meals'?meals():activeTab==='stocktake'?stocktake():settings();
+  $('screen').innerHTML=activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='expiry'?expiring():activeTab==='recipes'?recipeBookScreen():activeTab==='stocktake'?stocktake():settings();
   document.querySelectorAll('.nav [data-tab]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.tab===activeTab?'page':'false')));
 }
-function showTab(t){activeTab=t;render();window.scrollTo({top:0,behavior:'smooth'});}
-function moveRecipe(id,offset){
-  const from=state.recipes.findIndex(r=>r.id===id),to=from+offset;
-  if(from<0||to<0||to>=state.recipes.length)return;
-  [state.recipes[from],state.recipes[to]]=[state.recipes[to],state.recipes[from]];
-  persist();
-}
+function showTab(t){activeTab=t==='meals'?'recipes':t;render();window.scrollTo({top:0,behavior:'smooth'});}
 function downloadFile(name,text,mime){
   const blob=new Blob([text],{type:mime});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},3000);
 }
@@ -299,17 +229,11 @@ document.addEventListener('click',e=>{
     case 'editItem':editItem(id);break;
     case 'newCategory':editCategory();break;
     case 'editCategory':editCategory(id);break;
-    case 'newRecipe':editRecipe();break;
-    case 'editRecipe':editRecipe(id);break;
     case 'close':closeDialog();break;
     case 'plus':case 'minus':{
       const i=itemById(id);if(!i)break;
       Object.assign(i,StockBatches.change(i,Math.min(1,action==='minus'?amount(i):1),action==='plus'?'add':'use',''));persist();break;
     }
-    case 'addIngredient':$('ingredientRows').insertAdjacentHTML('beforeend',ingredientRow());break;
-    case 'removeIngredient':button.closest('.ingredient-row')?.remove();break;
-    case 'recipeUp':moveRecipe(id,-1);break;
-    case 'recipeDown':moveRecipe(id,1);break;
     case 'starter':loadStarters();break;
     case 'export':state.backupRequestedAt=new Date().toISOString();persist();downloadFile('home-reserves-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2),'application/json');break;
     case 'csv':{
@@ -321,7 +245,6 @@ document.addEventListener('click',e=>{
     case 'deleteItem':if(confirm('Delete this stock item? Meal recipes using it will need updating.')){state.items=state.items.filter(i=>i.id!==id);persist();closeDialog();}break;
     case 'deleteCategory':if(state.items.some(i=>i.category===id)){alert('Move or delete the items in this category first.');break;}
       if(confirm('Delete this category?')){state.categories=state.categories.filter(c=>c.id!==id);persist();closeDialog();}break;
-    case 'deleteRecipe':if(confirm('Delete this meal?')){state.recipes=state.recipes.filter(r=>r.id!==id);persist();closeDialog();}break;
   }
 });
 document.addEventListener('input',e=>{
@@ -344,7 +267,7 @@ document.addEventListener('change',async e=>{
 });
 document.addEventListener('submit',e=>{
   const form=e.target;
-  if(!['itemForm','categoryForm','recipeForm','settingsForm'].includes(form.id))return;
+  if(!['itemForm','categoryForm','settingsForm'].includes(form.id))return;
   e.preventDefault();const data=new FormData(form),id=form.dataset.id;
   if(form.id==='itemForm'){
     let expiry;try{expiry=InventoryCore.parseExpiry(data.get('expiry'));}catch(err){alert(err.message);return;}
@@ -357,18 +280,10 @@ document.addEventListener('submit',e=>{
     const name=String(data.get('name')||'').trim(),type=String(data.get('type')),mainGroup=String(data.get('mainGroup')||'');
     if(!name||!['food','water','other'].includes(type)){alert('Enter a valid category.');return;}
     if(id){const c=cat(id);if(!c)return;c.name=name;c.type=type;c.mainGroup=mainGroup;}else state.categories.push({id:uid(),name,type,mainGroup});
-  }else if(form.id==='recipeForm'){
-    const name=String(data.get('name')||'').trim(),portions=Number(data.get('portions'));
-    const ingredients=[...form.querySelectorAll('.ingredient-row')].map(row=>({itemId:row.querySelector('.ingredientId')?.value,amount:Number(row.querySelector('.ingredientQty')?.value)}));
-    if(!name||!Number.isInteger(portions)||portions<1||!ingredients.length||ingredients.some(ing=>!ing.itemId||!Number.isFinite(ing.amount)||ing.amount<=0)){
-      alert('Enter a meal name, portions and a positive amount for every ingredient.');return;
-    }
-    const recipe={id:id||uid(),name,portions,ingredients};
-    if(id){const at=state.recipes.findIndex(r=>r.id===id);if(at<0)return;state.recipes[at]=recipe;}else state.recipes.push(recipe);
   }else if(form.id==='settingsForm'){
-    const people=Number(data.get('people')),mealsPerDay=Number(data.get('mealsPerDay')),waterPerPerson=Number(data.get('waterPerPerson'));
-    if(!Number.isInteger(people)||people<1||!Number.isInteger(mealsPerDay)||mealsPerDay<1||!(waterPerPerson>0)){alert('Enter valid household figures.');return;}
-    state.settings={...state.settings,people,mealsPerDay,waterPerPerson,householdKcal:numberOrNull(data.get('householdKcal'))};
+    const people=Number(data.get('people')),waterPerPerson=Number(data.get('waterPerPerson'));
+    if(!Number.isInteger(people)||people<1||!(waterPerPerson>0)){alert('Enter valid household figures.');return;}
+    state.settings={...state.settings,people,waterPerPerson,householdKcal:numberOrNull(data.get('householdKcal'))};
   }
   persist();if($('editor').open)closeDialog();
 });

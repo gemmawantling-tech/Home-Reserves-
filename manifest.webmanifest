@@ -1,7 +1,7 @@
 {
   "name": "Home Reserves — Emergency Inventory",
   "short_name": "Home Reserves",
-  "description": "Inventory, optimum stock targets and family meal planning",
+  "description": "Inventory, optimum stock targets and household food and water coverage",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
