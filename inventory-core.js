@@ -12,6 +12,7 @@ function migrateCategories(data){
  const add=rows=>{for(const category of rows){if(!data.categories.some(c=>c.id===category.id||String(c.name).trim().toLowerCase()===category.name.toLowerCase()))data.categories.push({...category});}};
  if(!(data.categoryUpdate>=1)){add(EXTRA_CATEGORIES);data.categoryUpdate=1;}
  if(!(data.foodCategoryUpdate>=1)){add(FOOD_CATEGORIES);data.foodCategoryUpdate=1;}
+ if(!(data.kitCategoryUpdate>=1)){let kit=data.categories.find(c=>c.id==='firstaid'||/^first[ -]?aid$/i.test(c.name));if(!kit)data.categories.push({id:'firstaid',name:'Family first-aid kit',type:'other'});else if(/^first[ -]?aid$/i.test(kit.name))kit.name='Family first-aid kit';data.kitCategoryUpdate=1;}
  return data;
 }
 // Suggestions are reviewed by the user; category names do not imply complete meals.
