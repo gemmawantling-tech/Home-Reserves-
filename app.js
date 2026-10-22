@@ -163,7 +163,7 @@ function backupStatus(){return '<section class="card"><h2>Protect your stocktake
 function overview(){
   const m=calculateMeals(),people=setting('people',4),meals=setting('mealsPerDay',1),days=m.portions/(people*meals),water=waterLitres(),waterDays=water/(people*setting('waterPerPerson',3));
   const below=state.items.filter(low).sort((a,b)=>a.name.localeCompare(b.name));
-  return '<section class="card hero"><div class="eyebrow">YOUR HOME AT A GLANCE</div><h2>Everything in one place</h2><p class="small muted">Track what you have, set your own comfortable levels and see what needs using or checking. No automatic shopping targets.</p></section>'+stats()+
+  return '<section class="card hero"><div class="eyebrow">YOUR HOME AT A GLANCE</div><h2>Everything in one place</h2><p class="small muted">Track what you have, set your own comfortable levels and see what needs using or checking. No automatic shopping targets.</p><button data-action="reviewGaps">Identify gaps</button></section>'+gapsSummary()+stats()+
   '<section class="card"><div class="section-title"><h2>What might your supplies cover?</h2><button class="text-button" data-tab="meals">Meal details →</button></div>'+
   '<div class="split"><div><div class="large-number">'+(state.recipes.length||m.portions?fmt(days):'—')+'</div><div class="small muted">Days of planned meals</div><div class="small"><strong>'+(state.recipes.length||m.portions?fmt(days/7)+' weeks':'Add recipes to estimate')+'</strong></div></div>'+
   '<div><div class="large-number">'+(water>0?fmt(waterDays):'—')+'</div><div class="small muted">Water days</div><div class="small"><strong>'+fmt(water)+' litres logged</strong></div></div></div>'+

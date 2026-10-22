@@ -89,3 +89,11 @@ Recipes → **What can I cook?** groups saved recipes into ready, needing 1–2 
 An optional **Add basic cupboard recipes** button adds original tomato pasta, beans with rice, and oat porridge templates without duplicating them or replacing user recipes. Their ingredients require user-confirmed pantry links; unspecified cooking-water quantities are left for review. Dietary notes require checking actual packs.
 
 Validation: `node --test tests/*.test.cjs` and `node tests/batches-cooking-browser.cjs` cover legacy preservation, same-barcode different dates, same-date merging, earliest-first consumption, totals, date edits, reload/backup preservation, per-batch expiry, newer stock after an expired batch, cooking readiness/near-matches/uncertainty and optional recipe templates. Existing quick entry, scanning, portions, grouping, recipes, expiry and first-aid workflows were checked.
+
+## Gaps to review
+
+Overview → **Identify gaps** opens an expandable review, also linked from What can I cook. Confirmed stock shortages compare counted quantities against user-entered targets and show the exact difference. Linked recipe shortages are listed independently per recipe batch, without summing shared-stock demands into a misleading shopping quantity. First-aid shortages use only entries with positive, chosen checklist targets; optional medicine targets are never invented.
+
+Review sections separately identify uncounted stock, recipes with missing links/incompatible quantities/date review, counted food without portion information, first-aid supplies not yet checked, past-date batches, undated batches and optional stock targets not yet set. Unknown counts are not treated as zero or as confirmed shortages. Date review uses individual batches. Review buttons open item editing, the recipe or the family kit. The summary is computed without altering inventory, recipes or first-aid records and refreshes after edits. It is based on recorded data and targets, not a certification of complete household preparedness or nutritional coverage.
+
+Validation: `node --test tests/*.test.cjs` and `node tests/gaps-browser.cjs` verify exact stock differences, unknown/shortage separation, recipe checks, optional medicines, per-batch date review, editing refresh and direct review links. Quick entry and batch/cooking workflows remain checked.
