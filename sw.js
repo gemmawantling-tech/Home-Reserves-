@@ -1,5 +1,5 @@
-const CACHE_NAME='home-reserves-v5-groups';
-const LOCAL_FILES=['./','./index.html','./app.css','./app.js','./inventory-core.js','./product-lookup.js','./barcode-scanner.js','./scanning.js','./vendor/zxing.min.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const CACHE_NAME='home-reserves-v6-recipes';
+const LOCAL_FILES=['./','./index.html','./app.css','./app.js','./recipe-book.js','./recipe-book-ui.js','./inventory-core.js','./product-lookup.js','./barcode-scanner.js','./scanning.js','./vendor/zxing.min.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(LOCAL_FILES)).then(()=>self.skipWaiting()));
 });

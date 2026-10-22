@@ -39,9 +39,9 @@ let state, activeTab = 'overview', categoryFilter = 'all', statusFilter = 'all',
 function validData(d){
   if (!d || !Array.isArray(d.categories) || !Array.isArray(d.items) || !Array.isArray(d.recipes) || typeof d.settings !== 'object') throw Error('Not a valid Home Reserves backup');
   if (d.items.length > 20000 || d.categories.length > 500 || d.recipes.length > 2000) throw Error('Backup too large');
-  return InventoryCore.migrateCategories(d);
+  return RecipeBook.initialise(InventoryCore.migrateCategories(d));
 }
-try {state=validData(JSON.parse(localStorage.getItem(STORAGE_KEY)));}catch{state=InventoryCore.migrateCategories(newData());}
+try {state=validData(JSON.parse(localStorage.getItem(STORAGE_KEY)));}catch{state=validData(newData());}
 const cat = id => state.categories.find(c => c.id === id);
 const itemById = id => state.items.find(i => i.id === id);
 const listed = i => i.current !== null && i.current !== undefined && i.current !== '';
@@ -151,7 +151,7 @@ function stats(){
   const counted=state.items.filter(listed).length,below=state.items.filter(low).length,exp=state.items.filter(expiresSoon).length;
   return coverageSummary()+'<div class="stat-grid">'+stat(fmt(counted)+'<span class="small muted"> / '+fmt(state.items.length)+'</span>','Item types counted')+stat(fmt(below),'Below your optimum')+stat(fmt(exp),'Expiring or expired')+stat(fmt(calculateMeals().portions),'Planned food portions')+'</div>';
 }
-function backupStatus(){return '<section class="card"><h2>Protect your stocktake</h2><p class="hint">'+(state.backupRequestedAt?'Last backup download requested: '+escapeHTML(new Date(state.backupRequestedAt).toLocaleDateString('en-GB'))+'. Check that the file is saved.':'No backup download recorded yet.')+' Keep a copy outside this phone. Backups include stock, product details, portions, categories and recipes. Household sync is not connected.</p><button data-action="export">Export backup</button></section>';}
+function backupStatus(){return '<section class="card"><h2>Protect your stocktake</h2><p class="hint">'+(state.backupRequestedAt?'Last backup download requested: '+escapeHTML(new Date(state.backupRequestedAt).toLocaleDateString('en-GB'))+'. Check that the file is saved.':'No backup download recorded yet.')+' Keep a copy outside this phone. Backups include stock, product details, portions, categories, meal plans and your recipe notebook. Household sync is not connected.</p><button data-action="export">Export backup</button></section>';}
 function overview(){
   const m=calculateMeals(),people=setting('people',4),meals=setting('mealsPerDay',1),days=m.portions/(people*meals),water=waterLitres(),waterDays=water/(people*setting('waterPerPerson',3));
   const below=state.items.filter(low).sort((a,b)=>a.name.localeCompare(b.name));
@@ -247,7 +247,7 @@ function settings(){
 }
 function render(){
   $('message').innerHTML=message?'<div class="message warning">'+escapeHTML(message)+'</div>':'';
-  $('screen').innerHTML=activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='expiry'?expiring():activeTab==='meals'?meals():activeTab==='stocktake'?stocktake():settings();
+  $('screen').innerHTML=activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='expiry'?expiring():activeTab==='recipes'?recipeBookScreen():activeTab==='meals'?meals():activeTab==='stocktake'?stocktake():settings();
   document.querySelectorAll('.nav [data-tab]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.tab===activeTab?'page':'false')));
 }
 function showTab(t){activeTab=t;render();window.scrollTo({top:0,behavior:'smooth'});}
