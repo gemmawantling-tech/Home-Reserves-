@@ -183,7 +183,7 @@ function itemCard(i){
   if(expiry!==null&&expiry<=30)badges+='<span class="badge red">'+(expiry<0?'Expired':expiry===0?'Expires today':'Expires in '+expiry+' days')+'</span>';
   return '<article class="item"><div class="item-header"><div><div class="item-title">'+escapeHTML(i.name)+'</div>'+badges+'</div><button class="text-button" data-action="editItem" data-id="'+escapeHTML(i.id)+'">Edit</button></div>'+
     (!i.batchEntry&&listed(i)&&max>0?'<div class="meter '+(below?'low':'')+'"><span style="width:'+Math.min(100,amount(i)*100/max)+'%"></span></div>':'')+
-    (i.category==='firstaid'&&/kit/i.test(i.name)?familyKitButton():'')+'<div class="item-bottom"><div class="counts">Current: <strong>'+(listed(i)?fmt(i.current):'—')+'</strong> '+escapeHTML(i.unit)+'<br>Optimum: <strong>'+(targeted(i)?fmt(i.optimum):'Not set')+'</strong> '+escapeHTML(i.unit)+
+    '<div class="item-bottom"><div class="counts">Current: <strong>'+(listed(i)?fmt(i.current):'—')+'</strong> '+escapeHTML(i.unit)+'<br>Optimum: <strong>'+(targeted(i)?fmt(i.optimum):'Not set')+'</strong> '+escapeHTML(i.unit)+
     (i.portionsPerPack?'<br>'+fmt(amount(i)*i.portionsPerPack)+' '+escapeHTML(i.portionType||'ingredient')+' portions'+(['estimated','calculated'].includes(i.portionSource)?' (estimate)':''):'')+(i.location?'<br>📍 '+escapeHTML(i.location):'')+(i.expiry?'<br>Use-by / best-before: '+escapeHTML(displayDate(i.expiry)):'')+(i.notes?'<br>'+escapeHTML(i.notes):'')+'</div>'+
     (i.batchEntry?'<span class="hint">Batch quantity · product total '+fmt(i.productCurrent)+' '+escapeHTML(i.unit)+'</span>':'<div class="stepper"><button type="button" data-action="minus" data-id="'+escapeHTML(i.id)+'" aria-label="Use one '+escapeHTML(i.name)+'" '+(!listed(i)||amount(i)<=0?'disabled':'')+'>−</button><strong>'+(listed(i)?fmt(i.current):'—')+'</strong><button type="button" data-action="plus" data-id="'+escapeHTML(i.id)+'" aria-label="Add one '+escapeHTML(i.name)+'">+</button></div>')+'</div>'+batchSummary(i)+'</article>';
 }
@@ -369,7 +369,17 @@ document.addEventListener('submit',e=>{
   persist();if($('editor').open)closeDialog();
 });
 $('editor').addEventListener('click',e=>{if(e.target===$('editor'))closeDialog();});
-if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+if('serviceWorker' in navigator){
+ let hasController=Boolean(navigator.serviceWorker.controller);
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{
+  if(!hasController){hasController=true;return;}
+  if(document.getElementById('appUpdateNotice'))return;
+  const notice=document.createElement('div');notice.id='appUpdateNotice';notice.className='message';notice.setAttribute('role','status');
+  notice.append('An app update is ready. Save any changes, then ');
+  const button=document.createElement('button');button.type='button';button.textContent='Reload app';button.addEventListener('click',()=>location.reload());notice.append(button);document.querySelector('main').prepend(notice);
+ });
+ window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(reg=>reg.update()).catch(()=>{}));
+}
 
 document.addEventListener('invalid',e=>{if(!e.target.closest('#itemForm,#scanProductForm'))return;let parent=e.target.parentElement;while(parent){if(parent.tagName==='DETAILS')parent.open=true;parent=parent.parentElement;}},true);
 
