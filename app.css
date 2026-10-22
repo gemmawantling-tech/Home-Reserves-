@@ -17,3 +17,4 @@
 
 .gaps-review>summary{min-height:48px;cursor:pointer}.gaps-review>summary .hint{display:block;margin-top:4px}.gap-group{border-top:1px solid var(--line);padding:5px 0}.gap-group>summary{font-weight:650;min-height:44px}.gaps-review .row-line>div{min-width:0;overflow-wrap:anywhere}.gaps-review .row-line>button{flex-shrink:0}.gap-recipe{padding:14px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.gap-recipe ul{padding-left:20px;line-height:1.5}
 .food-parent{background:#f5f8f3}.food-subcategories{padding:0 10px 2px}.food-subcategories>.pantry-group>summary{padding:12px}.food-subcategories .pantry-group>.items-grid{padding:0 8px 8px}
+.group-parent{background:#f5f8f3}

@@ -8,12 +8,26 @@ function apply(data,entries){const next=JSON.parse(JSON.stringify(data));next.ca
 function totals(items){return items.reduce((t,i)=>{const q=Math.max(0,Number(i.current)||0),p=q*(Number(i.portionsPerPack)||0);t.quantity+=q;t[i.portionType==='meal'?'meals':i.portionType==='side'?'sides':'ingredients']+=p;if(i.packUnit==='g')t.grams+=q*(Number(i.packSize)||0);if(i.packUnit==='ml')t.ml+=q*(Number(i.packSize)||0);return t;},{quantity:0,meals:0,sides:0,ingredients:0,grams:0,ml:0});}
 const EXTRA_CATEGORIES=[{id:'drinks',name:'Drinks',type:'other'},{id:'snacks',name:'Snacks',type:'food'},{id:'treats',name:'Treats',type:'food'},{id:'alcohol',name:'Alcohol',type:'other'}];
 const FOOD_CATEGORIES=[{id:'cooking-sauces',name:'Cooking sauces',type:'food'},{id:'sauces',name:'Sauces & condiments',type:'food'},{id:'carbohydrates',name:'Carbohydrates',type:'food'},{id:'vegetables',name:'Vegetables',type:'food'},{id:'proteins',name:'Proteins',type:'food'},{id:'legumes',name:'Legumes & pulses',type:'food'},{id:'ready-meals',name:'Ready meals',type:'food'},{id:'fruit',name:'Fruit',type:'food'},{id:'dairy',name:'Dairy & alternatives',type:'food'},{id:'baking',name:'Baking ingredients',type:'food'},{id:'oils',name:'Oils & fats',type:'food'}];
+const MAIN_GROUPS=[{id:'food',name:'Food'},{id:'drinks',name:'Drinks'},{id:'health',name:'Health & hygiene'},{id:'power',name:'Power & equipment'},{id:'safety',name:'Safety & travel'},{id:'other',name:'Other supplies'}];
+function categoryGroup(c){
+ if(!c)return 'other';
+ if(MAIN_GROUPS.some(g=>g.id===c.mainGroup))return c.mainGroup;
+ if(c.type==='food')return 'food';
+ const name=String(c.name||'').toLowerCase(),id=String(c.id||'');
+ if(c.type==='water'||['drinks','alcohol'].includes(id)||/\b(drinks?|beverages?|alcohol|water|tea|coffee)\b/.test(name))return 'drinks';
+ if(['firstaid','hygiene'].includes(id)||/first[ -]?aid|hygiene|health|medic|toiletr|sanitat|cleaning|dental|personal care/.test(name))return 'health';
+ if(id==='power'||/power|lighting|batteries|fuel|cooking|cookware|camping stove|equipment|tools/.test(name))return 'power';
+ if(['safety','car'].includes(id)||/safety|warmth|travel|vehicle|transport|car supplies/.test(name))return 'safety';
+ return 'other';
+}
+function categoryLabel(c){const parent=MAIN_GROUPS.find(g=>g.id===categoryGroup(c));return parent.name+' / '+(c.type==='food'&&String(c.name).toLowerCase()==='food'?'Other food':c.id==='drinks'&&String(c.name).toLowerCase()==='drinks'?'Other drinks':c.name);}
 function migrateCategories(data){
  const add=rows=>{for(const category of rows){if(!data.categories.some(c=>c.id===category.id||String(c.name).trim().toLowerCase()===category.name.toLowerCase()))data.categories.push({...category});}};
  if(!(data.categoryUpdate>=1)){add(EXTRA_CATEGORIES);data.categoryUpdate=1;}
  if(!(data.foodCategoryUpdate>=1)){add(FOOD_CATEGORIES);data.foodCategoryUpdate=1;}
  if(!(data.foodHierarchyUpdate>=1)){add(FOOD_CATEGORIES.filter(c=>c.id==='cooking-sauces'));data.foodHierarchyUpdate=1;}
  if(!(data.kitCategoryUpdate>=1)){let kit=data.categories.find(c=>c.id==='firstaid'||/^first[ -]?aid$/i.test(c.name));if(!kit)data.categories.push({id:'firstaid',name:'Family first-aid kit',type:'other'});else if(/^first[ -]?aid$/i.test(kit.name))kit.name='Family first-aid kit';data.kitCategoryUpdate=1;}
+ if(!(data.mainGroupUpdate>=1)){if(!data.categories.some(c=>c.id==='cooking-equipment'||/cooking equipment|cookware/i.test(c.name)))data.categories.push({id:'cooking-equipment',name:'Cooking equipment',type:'other',mainGroup:'power'});data.mainGroupUpdate=1;}
  return data;
 }
 // Suggestions are reviewed by the user; category names do not imply complete meals.
@@ -46,5 +60,5 @@ function expiryItems(items,range='30',today=new Date()){
  return expanded.filter(i=>{if(!(Number(i.current)>0))return false;const days=expiryDays(i.expiry,today);return range==='undated'?days===null:days!==null&&(range==='all'||(range==='expired'?days<0:days<=Number(range)));}).sort((a,b)=>String(a.expiry||'').localeCompare(String(b.expiry||''))||String(a.name).localeCompare(String(b.name)));
 }
 class ScanGate{constructor(){this.locked=false;}accept(){if(this.locked)return false;this.locked=true;return true;}reset(){this.locked=false;}}
-const api={barcode,adjust,apply,totals,ScanGate,migrateCategories,EXTRA_CATEGORIES,FOOD_CATEGORIES,suggestFoodCategory,parseExpiry,expiryDays,expiryItems};if(typeof module!=='undefined')module.exports=api;else root.InventoryCore=api;
+const api={barcode,adjust,apply,totals,ScanGate,MAIN_GROUPS,categoryGroup,categoryLabel,migrateCategories,EXTRA_CATEGORIES,FOOD_CATEGORIES,suggestFoodCategory,parseExpiry,expiryDays,expiryItems};if(typeof module!=='undefined')module.exports=api;else root.InventoryCore=api;
 })(typeof window==='undefined'?globalThis:window);

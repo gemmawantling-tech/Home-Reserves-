@@ -8,7 +8,7 @@ document.addEventListener('submit',e=>{if(e.target.id!=='firstAidKitForm')return
 
 function familyKitCategoryId(){return state.categories.find(c=>c.id==='firstaid'||/^(?:family )?first[ -]?aid(?: kit)?$/i.test(c.name))?.id;}
 function familyKitPantryRows(){
- const id=familyKitCategoryId();if(!id||(categoryFilter!=='all'&&categoryFilter!==id)||locationFilter!=='all')return [];
+ const id=familyKitCategoryId();if(!id||(categoryFilter!=='all'&&categoryFilter!==id&&categoryFilter!=='all-'+InventoryCore.categoryGroup(cat(id)))||locationFilter!=='all')return [];
  const title=cat(id)?.name||'',needle=query.trim().toLowerCase();
  return FirstAidKit.get(state).rows.filter(r=>{
  const item={...r,optimum:r.target},days=InventoryCore.expiryDays(r.expiry);
