@@ -178,6 +178,30 @@ function itemCard(i){
     (i.portionsPerPack?'<br>'+fmt(amount(i)*i.portionsPerPack)+' '+escapeHTML(i.portionType||'ingredient')+' portions'+(['estimated','calculated'].includes(i.portionSource)?' (estimate)':''):'')+(i.location?'<br>📍 '+escapeHTML(i.location):'')+(i.expiry?'<br>Use-by / best-before: '+escapeHTML(displayDate(i.expiry)):'')+(i.notes?'<br>'+escapeHTML(i.notes):'')+'</div>'+
     '<div class="stepper"><button type="button" data-action="minus" data-id="'+escapeHTML(i.id)+'" aria-label="Use one '+escapeHTML(i.name)+'" '+(!listed(i)||amount(i)<=0?'disabled':'')+'>−</button><strong>'+(listed(i)?fmt(i.current):'—')+'</strong><button type="button" data-action="plus" data-id="'+escapeHTML(i.id)+'" aria-label="Add one '+escapeHTML(i.name)+'">+</button></div></div></article>';
 }
+const pantrySectionState=new Map();
+let pantrySectionDefaults=new Map();
+try{const saved=JSON.parse(localStorage.getItem('home_reserves_sections_v1'));if(Array.isArray(saved))pantrySectionDefaults=new Map(saved.filter(e=>Array.isArray(e)&&typeof e[0]==='string'&&typeof e[1]==='boolean'));}catch{}
+function pantryViewKey(id){return JSON.stringify([categoryFilter,statusFilter,locationFilter,query,id]);}
+function pantryGroups(items){
+ const groups=new Map();
+ for(const c of state.categories)groups.set(c.id,{id:c.id,name:c.name,items:[]});
+ for(const item of items){const id=item.category||'';if(!groups.has(id))groups.set(id,{id,name:'Uncategorised',items:[]});groups.get(id).items.push(item);}
+ const filtering=categoryFilter!=='all'||statusFilter!=='all'||locationFilter!=='all'||query.trim()!=='';
+ return [...groups.values()].filter(g=>g.items.length).map(g=>{
+  const key=pantryViewKey(g.id),open=pantrySectionState.has(key)?pantrySectionState.get(key):filtering?true:pantrySectionDefaults.get(g.id)||false;
+  const below=g.items.filter(low).length,expiring=g.items.filter(expiresSoon).length;
+  return '<details class="pantry-group" data-category="'+escapeHTML(g.id)+'" data-view="'+escapeHTML(key)+'" '+(open?'open':'')+'><summary><span class="group-title">'+escapeHTML(g.name)+'</span><span class="group-count">'+g.items.length+' item type'+(g.items.length===1?'':'s')+'</span>'+(below?'<span class="badge low">'+below+' below optimum</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="items-grid">'+g.items.map(itemCard).join('')+'</div></details>';
+ }).join('');
+}
+document.addEventListener('toggle',e=>{
+ const group=e.target;if(!group.matches?.('.pantry-group')||!group.isConnected)return;
+ pantrySectionState.set(group.dataset.view,group.open);
+ if(categoryFilter==='all'&&statusFilter==='all'&&locationFilter==='all'&&!query.trim()){
+  pantrySectionDefaults.set(group.dataset.category,group.open);
+  try{localStorage.setItem('home_reserves_sections_v1',JSON.stringify([...pantrySectionDefaults]));}catch{}
+ }
+},true);
+function setPantrySections(open){document.querySelectorAll('.pantry-group').forEach(group=>{pantrySectionState.set(group.dataset.view,open);group.open=open;});}
 function inventory(){
   const locations=[...new Set(state.items.map(i=>String(i.location||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const filtered=state.items.filter(i=>(categoryFilter==='all'||i.category===categoryFilter)&&(locationFilter==='all'||String(i.location||'').trim()===locationFilter)&&
@@ -188,8 +212,8 @@ function inventory(){
     '<select id="filterCategory" aria-label="Select category"><option value="all">All categories</option>'+state.categories.map(c=>'<option value="'+escapeHTML(c.id)+'" '+(categoryFilter===c.id?'selected':'')+'>'+escapeHTML(c.name)+'</option>').join('')+'</select>'+
     '<select id="filterStatus" aria-label="Select status">'+[['all','All levels'],['low','Below optimum'],['uncounted','Not counted'],['notarget','No optimum set'],['expiry','Expiring soon']].map(([v,l])=>'<option value="'+v+'" '+(statusFilter===v?'selected':'')+'>'+l+'</option>').join('')+'</select></div>'+
     '<label for="filterLocation">Storage location</label><select id="filterLocation"><option value="all">All locations</option>'+locations.map(location=>'<option value="'+escapeHTML(location)+'" '+(locationFilter===location?'selected':'')+'>'+escapeHTML(location)+'</option>').join('')+'</select>'+
-    '<p class="hint">'+filtered.length+' item types shown · Use + / − for quick stock adjustments, or Edit to enter an exact number.</p></section>'+
-    (filtered.length?'<div class="items-grid">'+filtered.map(itemCard).join('')+'</div>'+categoryTotals():'<section class="card empty">'+(state.items.length?'No items match your filters.':'No inventory yet. Add your first item, or load starter items in Settings.')+'</section>');
+    '<p class="hint">'+filtered.length+' item types shown. Tap a category to open it. Use + / − for quick stock adjustments, or Edit for an exact count.</p>'+(filtered.length?'<div class="actions"><button data-action="expandPantry">Expand all</button><button data-action="collapsePantry">Collapse all</button></div>':'')+'</section>'+
+    (filtered.length?pantryGroups(filtered):'<section class="card empty">'+(state.items.length?'No items match your filters.':'No inventory yet. Add your first item, or load starter items in Settings.')+'</section>');
 }
 function expiring(){
  const items=InventoryCore.expiryItems(state.items,expiryRange);
@@ -250,6 +274,8 @@ document.addEventListener('click',e=>{
   if(button.dataset.tab){showTab(button.dataset.tab);return;}
   const action=button.dataset.action,id=button.dataset.id;
   switch(action){
+    case 'expandPantry':setPantrySections(true);break;
+    case 'collapsePantry':setPantrySections(false);break;
     case 'newItem':editItem();break;
     case 'editItem':editItem(id);break;
     case 'newCategory':editCategory();break;

@@ -39,3 +39,9 @@ The Inventory navigation label is now **Pantry**, retaining all existing records
 Both ordinary item editing and barcode review accept typed dates as DD/MM/YYYY, DDMMYYYY or existing ISO dates. Impossible dates are rejected; empty dates can be saved. Dates are still stored as ISO strings, preserving existing backups. Use-by and best-before share one field: users must follow the label on the pack; per-batch dates remain unsupported. When adding stock of an existing barcode, the earliest existing date is retained. To correct that date, edit the stock item or choose Edit product details only.
 
 Validation: `node --test tests/*.test.cjs` and `node tests/expiry-browser.cjs` cover date parsing, range boundaries, used-up stock exclusion, location filtering, manual date replacement/clearing, and persistence across reloads.
+
+## Expandable Pantry categories
+
+Pantry groups stock into accessible native expandable category sections, including household-created categories. Each header shows its matching item-type count and below-optimum / due-date indicators. Sections initially collapse; unfiltered open/closed choices are remembered locally under a separate UI-preference key. Search and filters open matching groups by default; toggling a filtered group affects only that filter view. Expand all / Collapse all act on visible groups. Quantity changes and edits preserve the current view; editing an item's category moves its card into the appropriate section. Unrecognised categories remain visible as Uncategorised. Expiring retains its date-sorted list. Stock, catalogue, portions and backups are unchanged.
+
+`node tests/groups-browser.cjs` validates category/custom/uncategorised grouping, remembered expansion, stock adjustments, category edits, search, location filtering, data preservation and mobile layout.
