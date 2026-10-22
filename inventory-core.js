@@ -7,6 +7,25 @@ function apply(data,entries){const next=JSON.parse(JSON.stringify(data));next.ca
 function totals(items){return items.reduce((t,i)=>{const q=Math.max(0,Number(i.current)||0),p=q*(Number(i.portionsPerPack)||0);t.quantity+=q;t[i.portionType==='meal'?'meals':i.portionType==='side'?'sides':'ingredients']+=p;if(i.packUnit==='g')t.grams+=q*(Number(i.packSize)||0);if(i.packUnit==='ml')t.ml+=q*(Number(i.packSize)||0);return t;},{quantity:0,meals:0,sides:0,ingredients:0,grams:0,ml:0});}
 const EXTRA_CATEGORIES=[{id:'drinks',name:'Drinks',type:'other'},{id:'snacks',name:'Snacks',type:'food'},{id:'treats',name:'Treats',type:'food'},{id:'alcohol',name:'Alcohol',type:'other'}];
 function migrateCategories(data){if(data.categoryUpdate>=1)return data;for(const category of EXTRA_CATEGORIES){if(!data.categories.some(c=>c.id===category.id||String(c.name).trim().toLowerCase()===category.name.toLowerCase()))data.categories.push({...category});}data.categoryUpdate=1;return data;}
+function parseExpiry(value){
+ const text=String(value||'').trim();if(!text)return '';
+ let y,m,d,match;
+ if((match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(text))){[,y,m,d]=match;}
+ else if((match=/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})$/.exec(text))){[,d,m,y]=match;}
+ else if((match=/^(\d{2})(\d{2})(\d{4})$/.exec(text))){[,d,m,y]=match;}
+ else throw Error('Enter a date as DD/MM/YYYY, for example 25/12/2027, or leave it blank.');
+ const date=new Date(Number(y),Number(m)-1,Number(d),12);
+ if(Number(y)<1000||date.getFullYear()!==Number(y)||date.getMonth()!==Number(m)-1||date.getDate()!==Number(d))throw Error('That date does not exist. Check the day, month and year.');
+ return String(y).padStart(4,'0')+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+}
+function expiryDays(value,today=new Date()){
+ let iso;try{iso=parseExpiry(value);}catch{return null;}if(!iso)return null;
+ const [y,m,d]=iso.split('-').map(Number);
+ return Math.round((Date.UTC(y,m-1,d)-Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/86400000);
+}
+function expiryItems(items,range='30',today=new Date()){
+ return items.filter(i=>{if(!(Number(i.current)>0))return false;const days=expiryDays(i.expiry,today);return range==='undated'?days===null:days!==null&&(range==='all'||(range==='expired'?days<0:days<=Number(range)));}).sort((a,b)=>String(a.expiry||'').localeCompare(String(b.expiry||''))||String(a.name).localeCompare(String(b.name)));
+}
 class ScanGate{constructor(){this.locked=false;}accept(){if(this.locked)return false;this.locked=true;return true;}reset(){this.locked=false;}}
-const api={barcode,adjust,apply,totals,ScanGate,migrateCategories,EXTRA_CATEGORIES};if(typeof module!=='undefined')module.exports=api;else root.InventoryCore=api;
+const api={barcode,adjust,apply,totals,ScanGate,migrateCategories,EXTRA_CATEGORIES,parseExpiry,expiryDays,expiryItems};if(typeof module!=='undefined')module.exports=api;else root.InventoryCore=api;
 })(typeof window==='undefined'?globalThis:window);

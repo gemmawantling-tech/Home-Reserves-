@@ -35,7 +35,7 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':
 const fmt = value => Number(value).toLocaleString('en-GB',{maximumFractionDigits:2});
 const uid = () => 'id'+Date.now().toString(36)+Math.random().toString(36).slice(2,9);
 const newData = () => ({version:1,categories:JSON.parse(JSON.stringify(INITIAL_CATEGORIES)),items:[],recipes:[],settings:{people:4,mealsPerDay:1,waterPerPerson:3}});
-let state, activeTab = 'overview', categoryFilter = 'all', statusFilter = 'all', query = '', message = '';
+let state, activeTab = 'overview', categoryFilter = 'all', statusFilter = 'all', query = '', message = '', locationFilter='all', expiryRange='30';
 function validData(d){
   if (!d || !Array.isArray(d.categories) || !Array.isArray(d.items) || !Array.isArray(d.recipes) || typeof d.settings !== 'object') throw Error('Not a valid Home Reserves backup');
   if (d.items.length > 20000 || d.categories.length > 500 || d.recipes.length > 2000) throw Error('Backup too large');
@@ -50,14 +50,8 @@ const amount = i => listed(i) && Number.isFinite(Number(i.current)) ? Math.max(0
 const low = i => listed(i) && targeted(i) && amount(i) < Number(i.optimum);
 const foodItems = () => state.items.filter(i => cat(i.category)?.type === 'food');
 const setting = (name,fallback) => Number(state.settings[name]) > 0 ? Number(state.settings[name]) : fallback;
-function daysToExpiry(i){
-  if (!i.expiry) return null;
-  const date = new Date(i.expiry+'T12:00:00');
-  if (!Number.isFinite(date.getTime())) return null;
-  const today = new Date(); today.setHours(12,0,0,0);
-  return Math.round((date.getTime()-today.getTime())/86400000);
-}
-const expiresSoon = i => daysToExpiry(i) !== null && daysToExpiry(i) <= 30;
+function daysToExpiry(i){return InventoryCore.expiryDays(i.expiry);}
+const expiresSoon = i => amount(i)>0 && daysToExpiry(i) !== null && daysToExpiry(i) <= 30;
 const waterLitres = () => state.items.filter(i=>cat(i.category)?.type==='water').reduce((sum,i)=>sum+amount(i)*Math.max(0,Number(i.litresPerUnit)||0),0);
 function persist(){
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));message='';}
@@ -106,6 +100,8 @@ function calculateMeals(){
 function field(name,label,value='',extra=''){
   return '<div class="field"><label for="f_'+name+'">'+label+'</label><input id="f_'+name+'" name="'+name+'" value="'+escapeHTML(value)+'" '+extra+'></div>';
 }
+function displayDate(value){try{const iso=InventoryCore.parseExpiry(value);return iso?iso.split('-').reverse().join('/'):'';}catch{return String(value||'');}}
+function expiryField(value=''){return field('expiry','Use-by / best-before date (optional)',displayDate(value),'type="text" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="DD/MM/YYYY"')+'<p class="hint">Type DD/MM/YYYY or 8 digits (25122027). Leave blank if unknown. One date per stock line: record the earliest date still in stock.</p>';}
 function dropdown(name,label,options,selected){
   return '<div class="field"><label for="f_'+name+'">'+label+'</label><select id="f_'+name+'" name="'+name+'">'+options.map(([id,text])=>'<option value="'+escapeHTML(id)+'" '+(id===selected?'selected':'')+'>'+escapeHTML(text)+'</option>').join('')+'</select></div>';
 }
@@ -125,7 +121,7 @@ function editItem(id){
     '<div class="split">'+field('unit','Stock counted in',i?.unit||'packs','required maxlength="32" placeholder="tins / bottles"')+
     field('location','Storage location',i?.location||'','maxlength="90" placeholder="Utility cupboard"')+'</div>'+
     (i?.portionSource?'<p class="hint">Portions: '+escapeHTML(i.portionSource)+'. Change the number below to replace this with your own value.</p>':'')+'<div class="split">'+field('portionsPerPack','Portions per pack',i?.portionsPerPack??'','type="number" min="0" step="any"')+dropdown('portionType','Portion type',[['ingredient','Ingredient'],['side','Side'],['meal','Complete meal']],i?.portionType||'ingredient')+'</div>'+
-    '<div class="split">'+field('expiry','Earliest expiry date',i?.expiry||'','type="date"')+
+    '<div class="split">'+expiryField(i?.expiry)+
     field('litresPerUnit','Litres per item (for water)',i?.litresPerUnit??'','type="number" min="0" step="any" placeholder="e.g. 5"')+'</div>'+
     '<div class="field"><label for="f_notes">Notes</label><textarea id="f_notes" name="notes" rows="2" maxlength="300" placeholder="Optional">'+escapeHTML(i?.notes||'')+'</textarea></div>'+
     '<p class="hint">Leave current level blank if not counted yet, and optimum blank until you choose a target.</p>'+formActions('Item',i?.id)+'</form>');
@@ -179,19 +175,25 @@ function itemCard(i){
   return '<article class="item"><div class="item-header"><div><div class="item-title">'+escapeHTML(i.name)+'</div>'+badges+'</div><button class="text-button" data-action="editItem" data-id="'+escapeHTML(i.id)+'">Edit</button></div>'+
     (listed(i)&&max>0?'<div class="meter '+(below?'low':'')+'"><span style="width:'+Math.min(100,amount(i)*100/max)+'%"></span></div>':'')+
     '<div class="item-bottom"><div class="counts">Current: <strong>'+(listed(i)?fmt(i.current):'—')+'</strong> '+escapeHTML(i.unit)+'<br>Optimum: <strong>'+(targeted(i)?fmt(i.optimum):'Not set')+'</strong> '+escapeHTML(i.unit)+
-    (i.portionsPerPack?'<br>'+fmt(amount(i)*i.portionsPerPack)+' '+escapeHTML(i.portionType||'ingredient')+' portions'+(['estimated','calculated'].includes(i.portionSource)?' (estimate)':''):'')+(i.location?'<br>📍 '+escapeHTML(i.location):'')+(i.expiry?'<br>Expiry: '+escapeHTML(i.expiry):'')+(i.notes?'<br>'+escapeHTML(i.notes):'')+'</div>'+
+    (i.portionsPerPack?'<br>'+fmt(amount(i)*i.portionsPerPack)+' '+escapeHTML(i.portionType||'ingredient')+' portions'+(['estimated','calculated'].includes(i.portionSource)?' (estimate)':''):'')+(i.location?'<br>📍 '+escapeHTML(i.location):'')+(i.expiry?'<br>Use-by / best-before: '+escapeHTML(displayDate(i.expiry)):'')+(i.notes?'<br>'+escapeHTML(i.notes):'')+'</div>'+
     '<div class="stepper"><button type="button" data-action="minus" data-id="'+escapeHTML(i.id)+'" aria-label="Use one '+escapeHTML(i.name)+'" '+(!listed(i)||amount(i)<=0?'disabled':'')+'>−</button><strong>'+(listed(i)?fmt(i.current):'—')+'</strong><button type="button" data-action="plus" data-id="'+escapeHTML(i.id)+'" aria-label="Add one '+escapeHTML(i.name)+'">+</button></div></div></article>';
 }
 function inventory(){
-  const filtered=state.items.filter(i=>(categoryFilter==='all'||i.category===categoryFilter)&&
+  const locations=[...new Set(state.items.map(i=>String(i.location||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const filtered=state.items.filter(i=>(categoryFilter==='all'||i.category===categoryFilter)&&(locationFilter==='all'||String(i.location||'').trim()===locationFilter)&&
     (statusFilter==='all'||(statusFilter==='low'&&low(i))||(statusFilter==='uncounted'&&!listed(i))||(statusFilter==='notarget'&&!targeted(i))||(statusFilter==='expiry'&&expiresSoon(i)))&&
     (i.name+' '+(i.location||'')+' '+(i.notes||'')).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>Number(low(b))-Number(low(a))||a.name.localeCompare(b.name));
-  return '<section class="card"><div class="section-title"><h2>Inventory</h2><div class="actions"><button data-action="newCategory">+ Category</button><button data-action="newItem">+ Add item</button><button class="primary" data-action="scan">Scan barcode</button></div></div>'+
-    '<div class="filter-grid"><input id="filterSearch" class="search" aria-label="Search stock" placeholder="Search items or locations" value="'+escapeHTML(query)+'">'+
+  return '<section class="card"><div class="section-title"><h2>Pantry & household stock</h2><div class="actions"><button data-action="newCategory">+ Category</button><button data-action="newItem">+ Add item</button><button class="primary" data-action="scan">Scan barcode</button></div></div>'+
+    '<p class="hint">All your household stock is here. Use Storage location to see just the pantry, freezer or another cupboard.</p><div class="filter-grid"><input id="filterSearch" class="search" aria-label="Search stock" placeholder="Search items or locations" value="'+escapeHTML(query)+'">'+
     '<select id="filterCategory" aria-label="Select category"><option value="all">All categories</option>'+state.categories.map(c=>'<option value="'+escapeHTML(c.id)+'" '+(categoryFilter===c.id?'selected':'')+'>'+escapeHTML(c.name)+'</option>').join('')+'</select>'+
     '<select id="filterStatus" aria-label="Select status">'+[['all','All levels'],['low','Below optimum'],['uncounted','Not counted'],['notarget','No optimum set'],['expiry','Expiring soon']].map(([v,l])=>'<option value="'+v+'" '+(statusFilter===v?'selected':'')+'>'+l+'</option>').join('')+'</select></div>'+
+    '<label for="filterLocation">Storage location</label><select id="filterLocation"><option value="all">All locations</option>'+locations.map(location=>'<option value="'+escapeHTML(location)+'" '+(locationFilter===location?'selected':'')+'>'+escapeHTML(location)+'</option>').join('')+'</select>'+
     '<p class="hint">'+filtered.length+' item types shown · Use + / − for quick stock adjustments, or Edit to enter an exact number.</p></section>'+
     (filtered.length?'<div class="items-grid">'+filtered.map(itemCard).join('')+'</div>'+categoryTotals():'<section class="card empty">'+(state.items.length?'No items match your filters.':'No inventory yet. Add your first item, or load starter items in Settings.')+'</section>');
+}
+function expiring(){
+ const items=InventoryCore.expiryItems(state.items,expiryRange);
+ return '<section class="card hero"><div class="eyebrow">USE FIRST</div><h2>Expiring stock</h2><p class="hint">In-stock products, earliest date first. Includes every storage location. Used-up and uncounted items are excluded.</p><label for="expiryRange">Show products</label><select id="expiryRange">'+[['7','Overdue and next 7 days'],['30','Overdue and next 30 days'],['90','Overdue and next 90 days'],['expired','Past the recorded date'],['all','All dated stock'],['undated','No valid date recorded']].map(([value,label])=>'<option value="'+value+'" '+(expiryRange===value?'selected':'')+'>'+label+'</option>').join('')+'</select><p role="status">'+items.length+' product types</p><p class="hint">Follow the date type printed on the pack. Use-by dates concern safety; best-before dates concern quality. The app stores one earliest date per stock line.</p></section>'+(items.length?'<div class="items-grid">'+items.map(itemCard).join('')+'</div>':'<section class="card empty">No stock matches this date range.</section>');
 }
 function meals(){
   const plan=calculateMeals(),people=setting('people',4),perDay=setting('mealsPerDay',1),days=plan.portions/(people*perDay);
@@ -221,7 +223,7 @@ function settings(){
 }
 function render(){
   $('message').innerHTML=message?'<div class="message warning">'+escapeHTML(message)+'</div>':'';
-  $('screen').innerHTML=activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='meals'?meals():activeTab==='stocktake'?stocktake():settings();
+  $('screen').innerHTML=activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='expiry'?expiring():activeTab==='meals'?meals():activeTab==='stocktake'?stocktake():settings();
   document.querySelectorAll('.nav [data-tab]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.tab===activeTab?'page':'false')));
 }
 function showTab(t){activeTab=t;render();window.scrollTo({top:0,behavior:'smooth'});}
@@ -282,6 +284,8 @@ document.addEventListener('input',e=>{
   query=e.target.value;const caret=e.target.selectionStart;render();const field=$('filterSearch');field.focus();field.setSelectionRange(caret,caret);
 });
 document.addEventListener('change',async e=>{
+  if(e.target.id==='filterLocation'){locationFilter=e.target.value;render();}
+  if(e.target.id==='expiryRange'){expiryRange=e.target.value;render();}
   if(e.target.id==='filterCategory'){categoryFilter=e.target.value;render();}
   if(e.target.id==='filterStatus'){statusFilter=e.target.value;render();}
   if(e.target.id==='importInput'&&e.target.files?.[0]){
@@ -298,9 +302,10 @@ document.addEventListener('submit',e=>{
   if(!['itemForm','categoryForm','recipeForm','settingsForm'].includes(form.id))return;
   e.preventDefault();const data=new FormData(form),id=form.dataset.id;
   if(form.id==='itemForm'){
+    let expiry;try{expiry=InventoryCore.parseExpiry(data.get('expiry'));}catch(err){alert(err.message);return;}
     const name=String(data.get('name')||'').trim(),category=String(data.get('category')),unit=String(data.get('unit')||'').trim();
     if(!name||!unit||!cat(category)){alert('Please provide a name, unit and valid category.');return;}
-    const item={...(id?itemById(id):{}),id:id||uid(),name,category,unit,portionsPerPack:numberOrNull(data.get('portionsPerPack')),portionType:String(data.get('portionType')||'ingredient'),current:numberOrNull(data.get('current')),optimum:numberOrNull(data.get('optimum')),location:String(data.get('location')||'').trim(),expiry:String(data.get('expiry')||''),litresPerUnit:numberOrNull(data.get('litresPerUnit')),notes:String(data.get('notes')||'').trim()};
+    const item={...(id?itemById(id):{}),id:id||uid(),name,category,unit,portionsPerPack:numberOrNull(data.get('portionsPerPack')),portionType:String(data.get('portionType')||'ingredient'),current:numberOrNull(data.get('current')),optimum:numberOrNull(data.get('optimum')),location:String(data.get('location')||'').trim(),expiry,litresPerUnit:numberOrNull(data.get('litresPerUnit')),notes:String(data.get('notes')||'').trim()};
     if(!id||item.portionsPerPack!==itemById(id)?.portionsPerPack)item.portionSource='manual';if(id){const at=state.items.findIndex(i=>i.id===id);if(at<0)return;state.items[at]=item;}else state.items.push(item);
   }else if(form.id==='categoryForm'){
     const name=String(data.get('name')||'').trim(),type=String(data.get('type'));

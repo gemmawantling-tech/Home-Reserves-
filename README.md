@@ -31,3 +31,11 @@ The review card offers an editable serving weight and **Use calculated portions*
 Settings shows when a backup download was last requested, with a reminder to check the file was saved. It does not claim to verify a file on the user's phone. Cross-device household sync still requires a configured backend, authentication and household access controls; it is not enabled by this release.
 
 Additional validation: `node tests/portions-browser.cjs` tests existing-data migration, new categories, imported weight calculations, explicit estimates, correction preservation, backup download and beverage exclusion from food coverage.
+
+## Pantry and expiry update
+
+The Inventory navigation label is now **Pantry**, retaining all existing records and categories. A storage-location filter shows Pantry, Freezer or any locations already entered; it does not move or reclassify stock. **Expiring** shows positive stock quantities in earliest-date order, with overdue plus 7/30/90-day ranges, overdue-only, all dates, and missing-date views. Zero and uncounted stock are excluded.
+
+Both ordinary item editing and barcode review accept typed dates as DD/MM/YYYY, DDMMYYYY or existing ISO dates. Impossible dates are rejected; empty dates can be saved. Dates are still stored as ISO strings, preserving existing backups. Use-by and best-before share one field: users must follow the label on the pack; per-batch dates remain unsupported. When adding stock of an existing barcode, the earliest existing date is retained. To correct that date, edit the stock item or choose Edit product details only.
+
+Validation: `node --test tests/*.test.cjs` and `node tests/expiry-browser.cjs` cover date parsing, range boundaries, used-up stock exclusion, location filtering, manual date replacement/clearing, and persistence across reloads.
