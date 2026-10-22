@@ -1,4 +1,4 @@
-const CACHE_NAME='home-reserves-v8-family-kit';
+const CACHE_NAME='home-reserves-v9-quick-entry';
 const LOCAL_FILES=['./','./index.html','./app.css','./app.js','./recipe-book.js','./recipe-book-ui.js','./recipe-stock.js','./recipe-stock-ui.js','./first-aid-kit.js','./first-aid-kit-ui.js','./inventory-core.js','./product-lookup.js','./barcode-scanner.js','./scanning.js','./vendor/zxing.min.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(LOCAL_FILES)).then(()=>self.skipWaiting()));

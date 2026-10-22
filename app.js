@@ -110,21 +110,29 @@ function formActions(kind,id){
 }
 function editDialog(markup){$('editorBody').innerHTML=markup;$('editor').showModal();}
 function closeDialog(){window.stopScanning?.();$('editor').close();}
+function entryDefaults(){
+ const queued=typeof stockQueue!=='undefined'?stockQueue.at(-1)?.product:null;
+ const saved=queued||state.entryDefaults||{};
+ return {category:cat(categoryFilter)?categoryFilter:cat(saved.category)?saved.category:state.categories.find(c=>c.type==='food')?.id||state.categories[0]?.id,location:saved.location??'Pantry'};
+}
+function portionReviewNote(category,portions){return cat(category)?.type==='food'&&!(Number(portions)>0)?'<p class="hint portion-review">Portions not set. You can save now and review them later; they will not add complete-meal coverage.</p>':'';}
 function editItem(id){
-  const i=id?itemById(id):null;
-  if (!state.categories.length){notify('Create a category before adding stock.');showTab('settings');return;}
-  editDialog('<h2>'+(i?'Edit item':'Add item')+'</h2><form id="itemForm" data-id="'+escapeHTML(i?.id||'')+'">'+
-    (i?.barcode?'<p class="hint">Barcode: '+escapeHTML(i.barcode)+' <button type="button" data-action="productEdit" data-id="'+escapeHTML(i.id)+'">Edit product & portions</button></p>':'')+field('name','Item name',i?.name||'','required maxlength="120" placeholder="e.g. Lentils"')+
-    dropdown('category','Category',state.categories.map(c=>[c.id,c.name]),i?.category||state.categories[0].id)+
-    '<div class="split">'+field('current','Current level',i?.current??'','type="number" min="0" step="any" placeholder="Not counted"')+
-    field('optimum','Optimum level',i?.optimum??'','type="number" min="0" step="any" placeholder="Your target"')+'</div>'+
-    '<div class="split">'+field('unit','Stock counted in',i?.unit||'packs','required maxlength="32" placeholder="tins / bottles"')+
-    field('location','Storage location',i?.location||'','maxlength="90" placeholder="Utility cupboard"')+'</div>'+
-    (i?.portionSource?'<p class="hint">Portions: '+escapeHTML(i.portionSource)+'. Change the number below to replace this with your own value.</p>':'')+'<div class="split">'+field('portionsPerPack','Portions per pack',i?.portionsPerPack??'','type="number" min="0" step="any"')+dropdown('portionType','Portion type',[['ingredient','Ingredient'],['side','Side'],['meal','Complete meal']],i?.portionType||'ingredient')+'</div>'+
-    '<div class="split">'+expiryField(i?.expiry)+
-    field('litresPerUnit','Litres per item (for water)',i?.litresPerUnit??'','type="number" min="0" step="any" placeholder="e.g. 5"')+'</div>'+
-    '<div class="field"><label for="f_notes">Notes</label><textarea id="f_notes" name="notes" rows="2" maxlength="300" placeholder="Optional">'+escapeHTML(i?.notes||'')+'</textarea></div>'+
-    '<p class="hint">Leave current level blank if not counted yet, and optimum blank until you choose a target.</p>'+formActions('Item',i?.id)+'</form>');
+ const i=id?itemById(id):null;
+ if(!state.categories.length){notify('Create a category before adding stock.');showTab('settings');return;}
+ const defaults=entryDefaults(),category=i?.category||defaults.category;
+ editDialog('<h2>'+(i?'Edit item':'Add item')+'</h2><form id="itemForm" class="quick-entry" data-id="'+escapeHTML(i?.id||'')+'">'+
+  field('name','Item name',i?.name||'','required maxlength="120" placeholder="e.g. Lentils"')+
+  field('current','Quantity on hand ('+escapeHTML(i?.unit||'packs')+')',i?i.current??'':1,'type="number" min="0" step="any" placeholder="Not counted"')+
+  '<div class="split">'+dropdown('category','Category',state.categories.map(c=>[c.id,c.name]),category)+field('location','Storage location',i?i.location||'':defaults.location,'maxlength="90" placeholder="Pantry"')+'</div>'+
+  expiryField(i?.expiry)+portionReviewNote(category,i?.portionsPerPack)+formActions('Item',i?.id).replace('modal-actions','modal-actions entry-actions')+
+  '<details class="entry-section" id="itemPortions"><summary>Portions and pack size</summary><div class="split">'+field('packSize','Weight / volume per pack',i?.packSize??'','type="number" min="0" step="any"')+dropdown('packUnit','Pack unit',[['g','grams'],['ml','millilitres']],i?.packUnit||'g')+'</div>'+
+  field('unit','Counted in',i?.unit||'packs','required maxlength="32" placeholder="packs / tins / bottles"')+
+  '<div class="split">'+field('portionsPerPack','Portions per pack',i?.portionsPerPack??'','type="number" min="0" step="any"')+dropdown('portionType','These portions are',[['ingredient','Ingredient portions'],['side','Side portions'],['meal','Complete meal portions']],i?.portionType||'ingredient')+'</div>'+
+  (i?.portionSource?'<p class="hint">Portions: '+escapeHTML(i.portionSource)+'. Change the count to replace it with your own value.</p>':'')+
+  field('litresPerUnit','Litres per item (for drinking water)',i?.litresPerUnit??'','type="number" min="0" step="any"')+'<p class="hint">Ingredient and side portions are not complete meals. Leave unknown sizes and portions blank.</p></details>'+
+  '<details class="entry-section"><summary>Stock targets and notes</summary>'+field('optimum','Your stock target',i?.optimum??'','type="number" min="0" step="any" placeholder="Optional"')+
+  '<div class="field"><label for="f_notes">Notes</label><textarea id="f_notes" name="notes" rows="2" maxlength="300">'+escapeHTML(i?.notes||'')+'</textarea></div></details>'+
+  (i?.barcode?'<details class="entry-section"><summary>Product details and nutrition</summary><p class="hint">Barcode: '+escapeHTML(i.barcode)+'</p><button type="button" data-action="productEdit" data-id="'+escapeHTML(i.id)+'">Edit product details</button></details>':'')+'</form>');
 }
 function editCategory(id){
   const c=id?cat(id):null;
@@ -168,6 +176,7 @@ function overview(){
 function itemCard(i){
   const c=cat(i.category),expiry=daysToExpiry(i),below=low(i),max=targeted(i)?Number(i.optimum):0;
   let badges='<span class="badge">'+escapeHTML(c?.name||'Other')+'</span>';
+  if(cat(i.category)?.type==='food'&&!(Number(i.portionsPerPack)>0))badges+='<span class="badge">Portions to review</span>';
   if(!listed(i))badges+='<span class="badge low">Not yet counted</span>';
   else if(below)badges+='<span class="badge low">Below optimum</span>';
   else if(!targeted(i))badges+='<span class="badge">No target</span>';
@@ -332,6 +341,7 @@ document.addEventListener('submit',e=>{
     const name=String(data.get('name')||'').trim(),category=String(data.get('category')),unit=String(data.get('unit')||'').trim();
     if(!name||!unit||!cat(category)){alert('Please provide a name, unit and valid category.');return;}
     const item={...(id?itemById(id):{}),id:id||uid(),name,category,unit,portionsPerPack:numberOrNull(data.get('portionsPerPack')),portionType:String(data.get('portionType')||'ingredient'),current:numberOrNull(data.get('current')),optimum:numberOrNull(data.get('optimum')),location:String(data.get('location')||'').trim(),expiry,litresPerUnit:numberOrNull(data.get('litresPerUnit')),notes:String(data.get('notes')||'').trim()};
+    item.packSize=numberOrNull(data.get('packSize'));item.packUnit=String(data.get('packUnit')||'g');state.entryDefaults={category:item.category,location:item.location};
     if(!id||item.portionsPerPack!==itemById(id)?.portionsPerPack)item.portionSource='manual';if(id){const at=state.items.findIndex(i=>i.id===id);if(at<0)return;state.items[at]=item;}else state.items.push(item);
   }else if(form.id==='categoryForm'){
     const name=String(data.get('name')||'').trim(),type=String(data.get('type'));
@@ -354,3 +364,7 @@ document.addEventListener('submit',e=>{
 });
 $('editor').addEventListener('click',e=>{if(e.target===$('editor'))closeDialog();});
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+
+document.addEventListener('invalid',e=>{if(!e.target.closest('#itemForm,#scanProductForm'))return;let parent=e.target.parentElement;while(parent){if(parent.tagName==='DETAILS')parent.open=true;parent=parent.parentElement;}},true);
+
+document.addEventListener('input',e=>{if(e.target.closest('#itemForm')&&e.target.name==='unit')document.querySelector('#itemForm label[for="f_current"]').textContent='Quantity on hand ('+e.target.value+')';});
