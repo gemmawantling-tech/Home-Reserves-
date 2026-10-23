@@ -198,6 +198,7 @@ function settings(){
   return '<section class="card"><h2>Household planning assumptions</h2><form id="settingsForm">'+
     field('people','People',setting('people',4),'required type="number" min="1" max="30" step="1"')+
     field('reserveDays','Food reserve goal in days (optional)',state.settings.reserveDays??'','type="number" min="1" step="1" placeholder="e.g. 7 or 14"')+
+    '<button type="button" data-action="energyMembers">Set daily targets for each person</button><p class="hint">'+escapeHTML(EnergyAssessment.requirements(state.settings).source)+' · '+fmt(EnergyAssessment.requirements(state.settings).daily)+' kcal / day. Saving a household override below clears per-person targets; changing household size also requires reviewing them.</p>'+
     field('householdKcal','Household kcal per day (optional override)',state.settings.householdKcal??'','type="number" min="1" step="any" placeholder="Default: 2,000 × people"')+'<p class="hint">Food days use known stock calories divided by this daily total. Leave blank for the provisional 2,000 kcal per person assumption. Needs vary by age, body size and activity; adjust for your household, including children. This is an energy estimate, not a balanced-diet assessment.</p>'+
     field('waterPerPerson','Water litres per person / day',setting('waterPerPerson',3),'required type="number" min="0.1" max="20" step="0.1"')+
     '<p class="hint">The water estimate covers drinking and basic cooking only.</p><button class="primary" type="submit">Save assumptions</button></form></section>'+
@@ -209,9 +210,9 @@ function settings(){
 }
 function render(){
   $('message').innerHTML=message?'<div class="message warning">'+escapeHTML(message)+'</div>':'';
-  $('screen').innerHTML=activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='expiry'?expiring():activeTab==='recipes'?recipeBookScreen():activeTab==='stocktake'?stocktake():settings();
+  $('screen').innerHTML=activeTab==='foodImprove'?foodAssessmentScreen():activeTab==='foodDetails'?foodCalculationScreen():activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='expiry'?expiring():activeTab==='recipes'?recipeBookScreen():activeTab==='stocktake'?stocktake():settings();
   document.querySelector('.header [data-action="scan"]').hidden=activeTab==='stocktake';
-  document.querySelectorAll('.nav [data-tab]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.tab===activeTab?'page':'false')));
+  document.querySelectorAll('.nav [data-tab]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.tab===(activeTab.startsWith('food')?'overview':activeTab)?'page':'false')));
 }
 function showTab(t){activeTab=t==='meals'?'recipes':t;render();window.scrollTo({top:0,behavior:'smooth'});}
 function downloadFile(name,text,mime){
@@ -293,6 +294,7 @@ document.addEventListener('submit',e=>{
   }else if(form.id==='settingsForm'){
     const people=Number(data.get('people')),waterPerPerson=Number(data.get('waterPerPerson'));
     if(!Number.isInteger(people)||people<1||!(waterPerPerson>0)){alert('Enter valid household figures.');return;}
+    if(people!==Number(state.settings.people)||numberOrNull(data.get('householdKcal'))!==numberOrNull(state.settings.householdKcal))delete state.settings.energyMembers;
     state.settings={...state.settings,people,waterPerPerson,reserveDays:numberOrNull(data.get('reserveDays')),householdKcal:numberOrNull(data.get('householdKcal'))};
   }
   persist();if($('editor').open)closeDialog();
