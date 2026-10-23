@@ -13,7 +13,34 @@ function assign(data,ids,groupId){const next=JSON.parse(JSON.stringify(data)),wa
 function save(data,group){const next=JSON.parse(JSON.stringify(data)),g={...group,name:String(group.name||'').trim(),unit:String(group.unit||'').trim(),target:numeric(group.target)};if(!g.id||!g.name||g.name.length>90||!unit(g.unit)||!next.categories.some(c=>c.id===g.category))throw Error('Enter a group name, category and stock unit.');if(group.target!==null&&group.target!==undefined&&group.target!==''&&g.target===null)throw Error('The group target must be zero or above.');next.productGroups=next.productGroups||[];if(next.productGroups.some(x=>x.id!==g.id&&x.category===g.category&&x.name.toLowerCase()===g.name.toLowerCase()))throw Error('A group with this name already exists in this category. Use Merge groups if needed.');const at=next.productGroups.findIndex(x=>x.id===g.id);if(at<0)next.productGroups.push(g);else next.productGroups[at]=g;for(const item of members(g,next))validateItem(next,item);return next;}
 function merge(data,sourceId,targetId){if(sourceId===targetId)throw Error('Choose two different groups.');const source=(data.productGroups||[]).find(g=>g.id===sourceId),target=(data.productGroups||[]).find(g=>g.id===targetId);if(!source||!target)throw Error('Product group not found.');if(source.category!==target.category||!compatible(source.unit,target.unit))throw Error('Merge requires the same category and compatible stock units.');const next=assign(data,members(source,data).map(i=>i.id),targetId);next.productGroups=next.productGroups.filter(g=>g.id!==sourceId);for(const [key,p] of Object.entries(next.catalogue||{}))if(p.productGroupId===sourceId)next.catalogue[key]={...p,productGroupId:targetId};return next;}
 function remove(data,id){const next=assign(data,(data.items||[]).filter(i=>i.productGroupId===id).map(i=>i.id),null);next.productGroups=(next.productGroups||[]).filter(g=>g.id!==id);for(const [key,p] of Object.entries(next.catalogue||{}))if(p.productGroupId===id)next.catalogue[key]={...p,productGroupId:null};return next;}
-function suggestion(item){const s=(item.name+' '+(item.brand||'')).toLowerCase();if(/\b(microwave|microwavable|ready cooked|cooked|pilau|thai coconut)\b/.test(s)&&/\brice\b/.test(s))return 'Microwave Rice';if(/\bdolmio\b|\bpasta sauce\b|\b(tomato|bolognese|basil)\b.*\bsauce\b/.test(s))return 'Pasta Sauces';return '';}
+function suggestion(item){const s=[item.name,item.brand,item.flavour].filter(Boolean).join(' ').toLowerCase();
+const rules=[
+[/\b(coffee pods?|coffee capsules?|nespresso|dolce gusto)\b/,'Coffee Pods'],
+[/\binstant coffee\b|\bcoffee granules\b/,'Instant Coffee'],
+[/\b(coffee beans|whole bean coffee)\b/,'Coffee Beans'],
+[/\b(ground coffee|filter coffee|cafeti[eè]re coffee|espresso ground)\b/,'Ground Coffee'],
+[/\b(microwave|microwavable|ready cooked|cooked|pilau|thai coconut)\b.*\brice\b|\brice\b.*\b(microwave|microwavable|ready cooked)\b/,'Microwave Rice'],
+[/\bdolmio\b|\bpasta sauce\b|\b(tomato|bolognese|basil)\b.*\bsauce\b/,'Pasta Sauces'],
+[/\b(curry sauce|tikka masala sauce|korma sauce)\b/,'Curry Sauces'],
+[/\b(ketchup|mayonnaise|mustard)\b/,'Condiments'],
+[/\b(basmati rice|long grain rice|brown rice|dry rice|jasmine rice)\b/,'Dry Rice'],
+[/\b(spaghetti|penne|fusilli|macaroni|dry pasta)\b/,'Dry Pasta'],
+[/\bbaked beans\b/,'Baked Beans'],
+[/\b(kidney beans|butter beans|cannellini beans|black beans)\b/,'Beans'],
+[/\bchickpeas\b/,'Chickpeas'],[/\blentils\b/,'Lentils'],
+[/\b(porridge oats|rolled oats|oatmeal)\b/,'Porridge Oats'],
+[/\b(peanut butter|almond butter)\b/,'Nut Butters'],
+[/\b(tinned tuna|canned tuna|tuna chunks|tuna steaks)\b/,'Tinned Tuna'],
+[/\b(tinned tomatoes|chopped tomatoes|plum tomatoes|passata)\b/,'Tomatoes'],
+[/\btea bags?\b/,'Tea Bags'],[/\b(uht milk|long life milk)\b/,'Long-life Milk'],
+[/\b(bottled water|spring water|mineral water)\b/,'Drinking Water'],
+[/\b(plain flour|self raising flour|bread flour)\b/,'Flour'],
+[/\b(olive oil|sunflower oil|vegetable oil|rapeseed oil)\b/,'Cooking Oils'],
+[/\b(washing up liquid|dishwashing liquid)\b/,'Washing-up Liquid'],
+[/\b(toilet roll|toilet paper)\b/,'Toilet Rolls'],[/\bbaby wipes\b/,'Baby Wipes']
+];return rules.find(([pattern])=>pattern.test(s))?.[1]||'';}
+function review(data){const rows=data.items.map(i=>({id:i.id,name:i.name,category:i.category,unit:i.unit,current:i.current,existing:groupFor(i,data)?.name||'',suggested:groupFor(i,data)?'':suggestion(i)}));for(const r of rows){if(!r.suggested)continue;const base=r.suggested,existing=(data.productGroups||[]).find(g=>g.category===r.category&&g.name.toLowerCase()===base.toLowerCase());const otherUnits=data.items.some(x=>x.category===r.category&&!groupFor(x,data)&&suggestion(x)===base&&!compatible(x.unit,r.unit));if(existing&&!compatible(existing.unit,r.unit)||!existing&&otherUnits)r.suggested=base+' ('+(unit(r.unit)?.key||r.unit||'unknown units')+')';}return rows;}
+function applyReview(data,choices,makeId){let next=JSON.parse(JSON.stringify(data));const seen=new Set();for(const choice of choices){if(seen.has(choice.id))throw Error('A product was selected twice.');seen.add(choice.id);const item=next.items.find(i=>i.id===choice.id);if(!item)throw Error('An item has changed. Review the inventory again.');if(item.productGroupId)throw Error('An item is already grouped. Review the inventory again.');const name=String(choice.name||'').trim();if(!name||name.length>90)throw Error('Enter a group name of up to 90 characters.');let group=(next.productGroups||[]).find(g=>g.category===item.category&&g.name.toLowerCase()===name.toLowerCase());if(!group){group={id:makeId(),name,category:item.category,unit:item.unit,target:null};next=save(next,group);}if(!compatible(group.unit,item.unit))throw Error(name+' uses incompatible stock units. Give these items separate group names.');next=assign(next,[item.id],group.id);}validate(next);return next;}
 function validate(data){if(data.productGroups===undefined||data.productGroups===null)return;if(!Array.isArray(data.productGroups)||data.productGroups.length>2000)throw Error('Invalid product-group data.');const ids=new Set();for(const g of data.productGroups){if(!g||typeof g.id!=='string'||!g.id||ids.has(g.id)||typeof g.name!=='string'||!g.name.trim()||g.name.length>90||typeof g.category!=='string'||!unit(g.unit)||g.target!==null&&g.target!==undefined&&g.target!==''&&numeric(g.target)===null)throw Error('Invalid or duplicate product-group record.');ids.add(g.id);}}
-const api={validate,unit,compatible,groupFor,members,totals,validateItem,assign,save,merge,remove,suggestion};if(typeof module!=='undefined')module.exports=api;else root.ProductGroups=api;
+const api={validate,unit,compatible,groupFor,members,totals,validateItem,assign,save,merge,remove,suggestion,review,applyReview};if(typeof module!=='undefined')module.exports=api;else root.ProductGroups=api;
 })(typeof window==='undefined'?globalThis:window);
