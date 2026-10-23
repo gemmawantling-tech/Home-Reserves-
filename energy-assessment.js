@@ -61,8 +61,18 @@ function assess(data,today=new Date().toISOString().slice(0,10)){
  const legacy=F.analyse(data,today),total=verified+estimatedExtra;const preparationUnassessed=eligibleRows.filter(r=>{const a=data.items.find(i=>i.id===r.id)?.foodAssessment||{};return [a.readyToEat,a.requiresWater,a.requiresHeat,a.requiresCooking].some(v=>typeof v!=='boolean');}).length;
  return {rows,remaining,verified,estimatedExtra,total,daily:req.daily,requirements:req,verifiedDays:verified/req.daily,estimatedDays:total/req.daily,noCookMeals,preparationUnassessed,mealVariety:mealTypes.size,assessed:eligibleRows.length-remaining.length,foodTypes:eligibleRows.length,legacy,goal:num(data.settings?.reserveDays),duplicateBarcodes:duplicateCodes(data.items||[])};
 }
+function portionCoverage(data,today=new Date().toISOString().slice(0,10)){
+ const rows=[],seen=new Set(),byType={ingredient:0,side:0,meal:0};let total=0,missing=0,expired=0,undated=0;
+ for(const i of data.items||[]){if(!F.eligible(i,data)||(data.categories||[]).find(c=>c.id===i.category)?.type!=='food')continue;if(i.id&&seen.has(i.id))continue;if(i.id)seen.add(i.id);
+ const q=num(i.current),parts=num(i.portionsPerPack);let reason='',usable=0,old=0,unknown=0;
+ if(q===null)reason='Stock quantity missing';else if(q===0)continue;else{try{for(const b of B.read(i)){let date='';try{date=C.parseExpiry(b.expiry);}catch{}if(date&&date<today)old+=b.quantity;else{usable+=b.quantity;if(!date)unknown+=b.quantity;}}usable=Math.min(q,usable);}catch{reason='Review batch quantities';}if(!reason&&!(parts>0))reason='Portions per pack missing';}
+ expired+=old;undated+=unknown;const type=['side','meal'].includes(i.portionType)?i.portionType:'ingredient',portions=reason?null:usable*parts;if(portions!==null){total+=portions;byType[type]+=portions;}else missing++;
+ rows.push({id:i.id,name:i.name,quantity:usable,perPack:parts,portions,type,reason,expired:old,undated:unknown});
+ }
+ const daily=num(data.settings?.householdPortionsPerDay);return {rows,total,byType,missing,expired,undated,daily:daily>0?daily:null,days:daily>0?total/daily:null};
+}
 function signature(i){return JSON.stringify([i.unit,i.packSize,i.packUnit,i.labelServingsPerPack,i.portionsPerPack,i.servingSize,i.servingWeight,i.servingUnit,i.kcalPerUnit,i.nutrition,i.foodAssessment?.labelPer100,i.foodAssessment?.method,i.foodAssessment?.stockBasis,i.foodAssessment?.nutritionBasis,i.foodAssessment?.edibleSize,i.foodAssessment?.edibleFraction]);}
 function aReady(i){const a=i.foodAssessment||{};return a.readyToEat===true&&a.requiresWater===false&&a.requiresHeat===false&&a.requiresCooking===false&&a.mealConfirmed===true&&i.portionType==='meal'&&num(i.portionsPerPack)>0;}
 function duplicateCodes(items){const codes=new Map();for(const i of items){if(!i.barcode)continue;try{const code=C.barcode(i.barcode);if(!codes.has(code))codes.set(code,[]);codes.get(code).push(i.id);}catch{}}return [...codes.values()].filter(ids=>ids.length>1);}
-const api={assess,requirements,unitEnergy,signature};if(typeof module!=='undefined')module.exports=api;else root.EnergyAssessment=api;
+const api={portionCoverage,assess,requirements,unitEnergy,signature};if(typeof module!=='undefined')module.exports=api;else root.EnergyAssessment=api;
 })(typeof window==='undefined'?globalThis:window);
