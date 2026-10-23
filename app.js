@@ -92,11 +92,12 @@ function editItem(id){
  editDialog('<h2>'+(i?'Edit item':'Add item')+'</h2><form id="itemForm" class="quick-entry" data-id="'+escapeHTML(i?.id||'')+'">'+
   field('name','Item name',i?.name||'','required maxlength="120" placeholder="e.g. Lentils"')+
   field('current','Quantity on hand ('+escapeHTML(i?.unit||'packs')+')',i?i.current??'':1,'type="number" min="0" step="any" placeholder="Not counted"')+
+  field('portionsPerPack','Portions per pack (optional)',i?.portionsPerPack??'','type="number" min="0" step="any" inputmode="decimal" placeholder="e.g. 2"')+
   '<div class="split">'+dropdown('category','Category',InventoryCore.sortedCategories(state.categories).map(c=>[c.id,c.name]),category)+field('location','Storage location',i?i.location||'':defaults.location,'maxlength="90" placeholder="Pantry"')+'</div>'+
   (i&&StockBatches.read(i).length>1?'<input type="hidden" name="expiry" value="'+escapeHTML(i.expiry||'')+'"><p class="hint">Multiple expiry dates: use Manage batches to edit them.</p><button type="button" data-action="manageBatches" data-id="'+escapeHTML(i.id)+'">Manage batches</button>':expiryField(i?.expiry))+portionReviewNote(category,i?.portionsPerPack)+formActions('Item',i?.id).replace('modal-actions','modal-actions entry-actions')+
   '<details class="entry-section" id="itemPortions"><summary>Portions and pack size</summary><div class="split">'+field('packSize','Weight / volume per pack',i?.packSize??'','type="number" min="0" step="any"')+dropdown('packUnit','Pack unit',[['g','grams'],['ml','millilitres']],i?.packUnit||'g')+'</div>'+
   field('unit','Counted in',i?.unit||'packs','required maxlength="32" placeholder="packs / tins / bottles"')+
-  '<div class="split">'+field('portionsPerPack','Portions per pack',i?.portionsPerPack??'','type="number" min="0" step="any"')+dropdown('portionType','These portions are',[['ingredient','Ingredient portions'],['side','Side portions'],['meal','Complete meal portions']],i?.portionType||'ingredient')+'</div>'+
+  '<div>'+dropdown('portionType','These portions are',[['ingredient','Ingredient portions'],['side','Side portions'],['meal','Complete meal portions']],i?.portionType||'ingredient')+'</div>'+
   portionEstimateControl(i||{})+
   (i?.portionSource?'<p class="hint">Portions: '+escapeHTML(i.portionSource)+'. Change the count to replace it with your own value.</p>':'')+
   field('litresPerUnit','Litres per item (for drinking water)',i?.litresPerUnit??'','type="number" min="0" step="any"')+'<p class="hint">Ingredient and side portions are not complete meals. Leave unknown sizes and portions blank.</p></details>'+
