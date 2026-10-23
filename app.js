@@ -37,11 +37,12 @@ const uid = () => 'id'+Date.now().toString(36)+Math.random().toString(36).slice(
 const newData = () => ({version:1,categories:JSON.parse(JSON.stringify(INITIAL_CATEGORIES)),items:[],recipes:[],settings:{people:4,waterPerPerson:3}});
 let state, activeTab = 'overview', categoryFilter = 'all', statusFilter = 'all', query = '', message = '', locationFilter='all', expiryRange='30';
 function validData(d){
-  if (!d || !Array.isArray(d.categories) || !Array.isArray(d.items) || !Array.isArray(d.recipes) || typeof d.settings !== 'object') throw Error('Not a valid Home Reserves backup');
+  if (!d || !Array.isArray(d.categories) || !Array.isArray(d.items) || !Array.isArray(d.recipes) || (!d.settings || typeof d.settings !== 'object' || Array.isArray(d.settings))) throw Error('Not a valid Home Reserves backup');
   if (d.items.length > 20000 || d.categories.length > 500 || d.recipes.length > 2000) throw Error('Backup too large');
   return RecipeBook.initialise(InventoryCore.migrateCategories(d));
 }
-try {state=validData(JSON.parse(localStorage.getItem(STORAGE_KEY)));}catch{state=validData(newData());}
+let savedInventory=null,startupRecoveryNeeded=false;
+try {savedInventory=localStorage.getItem(STORAGE_KEY);state=validData(JSON.parse(savedInventory));}catch{state=validData(newData());if(savedInventory){startupRecoveryNeeded=true;message='Your saved records could not be read. Open Settings → Backups & recovery before adding new items. Existing recovery copies have been kept.';}}
 const cat = id => state.categories.find(c => c.id === id);
 const itemById = id => state.items.find(i => i.id === id);
 const listed = i => i.current !== null && i.current !== undefined && i.current !== '';
@@ -53,8 +54,9 @@ const setting = (name,fallback) => Number(state.settings[name]) > 0 ? Number(sta
 function daysToExpiry(i){return InventoryCore.expiryDays(i.expiry);}
 const expiresSoon = i => amount(i)>0 && daysToExpiry(i) !== null && daysToExpiry(i) <= 30;
 const waterLitres = () => state.items.filter(i=>cat(i.category)?.type==='water').reduce((sum,i)=>sum+amount(i)*Math.max(0,Number(i.litresPerUnit)||0),0);
+function storeInventory(data,{replaceUnreadable=false}={}){if(startupRecoveryNeeded&&!replaceUnreadable)throw Error('Saved records need recovery. Restore or import a backup before saving changes.');localStorage.setItem(STORAGE_KEY,JSON.stringify(data));startupRecoveryNeeded=false;BackupStore.schedule(data);}
 function persist(){
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));message='';}
+  try{storeInventory(state);message='';}
   catch{message='Could not save to browser storage. Please export a backup.';}
   render();
 }
@@ -112,13 +114,13 @@ function editCategory(id){
 function stat(value,label){return '<div class="stat"><div class="value">'+value+'</div><div class="label">'+label+'</div></div>';}
 function stats(){
   const counted=state.items.filter(listed).length,below=state.items.filter(low).length,exp=state.items.filter(expiresSoon).length;
-  return coverageSummary()+'<div class="stat-grid">'+stat(fmt(counted)+'<span class="small muted"> / '+fmt(state.items.length)+'</span>','Item types counted')+stat(fmt(below),'Below your optimum')+stat(fmt(exp),'Expiring or expired')+stat(fmt(foodItems().filter(i=>amount(i)>0).length),'Food types in stock')+'</div>';
+  return '<div class="stat-grid">'+stat(fmt(counted)+'<span class="small muted"> / '+fmt(state.items.length)+'</span>','Item types counted')+stat(fmt(below),'Below your optimum')+stat(fmt(exp),'Expiring or expired')+stat(fmt(state.items.filter(i=>FoodCoverage.eligible(i,state)&&amount(i)>0).length),'Food types in stock')+'</div>';
 }
-function backupStatus(){return '<section class="card"><h2>Protect your stocktake</h2><p class="hint">'+(state.backupRequestedAt?'Last backup download requested: '+escapeHTML(new Date(state.backupRequestedAt).toLocaleDateString('en-GB'))+'. Check that the file is saved.':'No backup download recorded yet.')+' Keep a copy outside this phone. Backups include stock, product details, portions, categories, meal plans and your recipe notebook. Household sync is not connected.</p><button data-action="export">Export backup</button></section>';}
+function backupStatus(){return backupPanel();}
 function overview(){
   const people=setting('people',4),water=waterLitres(),waterDays=water/(people*setting('waterPerPerson',3));
   const below=state.items.filter(low).sort((a,b)=>a.name.localeCompare(b.name));
-  return '<section class="card hero"><div class="eyebrow">YOUR HOME AT A GLANCE</div><h2>Everything in one place</h2><p class="small muted">Track what you have, set your own comfortable levels and see what needs using or checking. No automatic shopping targets.</p><button data-action="reviewGaps">Identify gaps</button></section>'+gapsSummary()+foodCoverageCard()+stats()+
+  return '<section class="card hero"><div class="eyebrow">YOUR HOME AT A GLANCE</div><h2>Everything in one place</h2><p class="small muted">Track what you have, set your own comfortable levels and see what needs using or checking. No automatic shopping targets.</p><button data-action="reviewGaps">Identify gaps</button></section>'+gapsSummary()+backupReminder()+foodCoverageCard()+stats()+
   '<section class="card"><h2>Water coverage</h2><div class="large-number">'+(water>0?fmt(waterDays):'—')+'</div><p class="small muted">Water days · '+fmt(water)+' litres logged</p><p class="hint">Based on '+fmt(people)+' people and '+fmt(setting('waterPerPerson',3))+' litres per person daily for drinking and basic cooking. Does not cover washing.</p></section>'+
   '<section class="card"><div class="section-title"><h2>Below your optimum</h2><button class="text-button" data-tab="inventory">All stock →</button></div>'+
   (below.length?below.slice(0,7).map(i=>'<div class="row-line"><span>'+escapeHTML(i.name)+'</span><span class="small nowrap">'+fmt(i.current)+' / '+fmt(i.optimum)+' '+escapeHTML(i.unit)+'</span></div>').join(''):'<div class="empty">Nothing currently recorded below its target.</div>')+
@@ -191,6 +193,7 @@ function expiring(){
 function settings(){
   return '<section class="card"><h2>Household planning assumptions</h2><form id="settingsForm">'+
     field('people','People',setting('people',4),'required type="number" min="1" max="30" step="1"')+
+    field('reserveDays','Food reserve goal in days (optional)',state.settings.reserveDays??'','type="number" min="1" step="1" placeholder="e.g. 7 or 14"')+
     field('householdKcal','Household kcal per day (optional override)',state.settings.householdKcal??'','type="number" min="1" step="any" placeholder="Default: 2,000 × people"')+'<p class="hint">Food days use known stock calories divided by this daily total. Leave blank for the provisional 2,000 kcal per person assumption. Needs vary by age, body size and activity; adjust for your household, including children. This is an energy estimate, not a balanced-diet assessment.</p>'+
     field('waterPerPerson','Water litres per person / day',setting('waterPerPerson',3),'required type="number" min="0.1" max="20" step="0.1"')+
     '<p class="hint">The water estimate covers drinking and basic cooking only.</p><button class="primary" type="submit">Save assumptions</button></form></section>'+
@@ -235,7 +238,7 @@ document.addEventListener('click',e=>{
       Object.assign(i,StockBatches.change(i,Math.min(1,action==='minus'?amount(i):1),action==='plus'?'add':'use',''));persist();break;
     }
     case 'starter':loadStarters();break;
-    case 'export':state.backupRequestedAt=new Date().toISOString();persist();downloadFile('home-reserves-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2),'application/json');break;
+    case 'export':if(startupRecoveryNeeded){notify('Current records cannot be read. Open Settings → View recovery copies to download an existing snapshot.');break;}state.backupRequestedAt=new Date().toISOString();persist();downloadFile('home-reserves-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2),'application/json');break;
     case 'csv':{
       const rows=[['Category','Item','Current','Optimum','Unit','Location','Expiry','Litres per item','Notes'],...state.items.map(i=>[cat(i.category)?.name||'',i.name,i.current??'',i.optimum??'',i.unit,i.location||'',i.expiry||'',i.litresPerUnit??'',i.notes||''])];
       const csv=rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
@@ -259,8 +262,8 @@ document.addEventListener('change',async e=>{
   if(e.target.id==='importInput'&&e.target.files?.[0]){
     try{
       const d=validData(JSON.parse(await e.target.files[0].text()));
-      if(!confirm('Replace your ENTIRE current inventory, categories, meals and settings with this backup?'))return;
-      state=d;persist();notify('Your backup was imported.');
+      if(!confirm('Replace your ENTIRE current inventory, categories, recipes, settings and kit checklist with this backup?'))return;
+      if(!startupRecoveryNeeded)await BackupStore.safety(state);storeInventory(d,{replaceUnreadable:true});state=d;render();notify('Your backup was imported. Your previous data is kept as a safety copy.');
     }catch(err){notify('Could not import file: '+err.message);}
     finally{if(e.target)e.target.value='';}
   }
@@ -283,7 +286,7 @@ document.addEventListener('submit',e=>{
   }else if(form.id==='settingsForm'){
     const people=Number(data.get('people')),waterPerPerson=Number(data.get('waterPerPerson'));
     if(!Number.isInteger(people)||people<1||!(waterPerPerson>0)){alert('Enter valid household figures.');return;}
-    state.settings={...state.settings,people,waterPerPerson,householdKcal:numberOrNull(data.get('householdKcal'))};
+    state.settings={...state.settings,people,waterPerPerson,reserveDays:numberOrNull(data.get('reserveDays')),householdKcal:numberOrNull(data.get('householdKcal'))};
   }
   persist();if($('editor').open)closeDialog();
 });
