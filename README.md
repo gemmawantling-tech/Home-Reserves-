@@ -159,3 +159,10 @@ Shopping list (v32): open from Overview or Pantry tools. Shortages are derived f
 In Pantry, **Group similar items** reviews every inventory row locally. It suggests groups for recognised names (including separate ground coffee, instant coffee, beans and pods), retains existing assignments, and shows unmatched rows with an editable group field. Review the proposed names, leave unwanted entries blank and select **Apply reviewed groups** once. Compatible existing groups and their targets are reused; incompatible package units get separate suggested names. Categories and stock quantities are not changed. A recovery snapshot is required before saving. No private inventory is sent to a server, and ambiguous names are not silently assigned.
 
 Verification: `node --test tests/*.test.cjs` and `node tests/group-review-browser.cjs` (set `TEST_URL` to check a published build).
+
+
+### Automatic grouping on opening Pantry
+
+Version 34 applies recognised product-name groups to existing ungrouped stock on the first Pantry visit, with a recovery backup before saving. It keeps existing group assignments and targets, quantities, batches, dates and categories; unknown names remain ungrouped. The persisted `automaticGroupingVersion` marker prevents the upgrade from undoing later deliberate ungrouping. No database migration or Firebase rules are involved. Pantry shows group-name/quantity shortcuts that open the relevant category and varieties directly. Manual review and group management remain available.
+
+Verify automatic upgrade with `node tests/automatic-groups-browser.cjs`, including against the deployed `TEST_URL`.
