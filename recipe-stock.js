@@ -9,29 +9,47 @@ function suggestion(text,items){const name=normalName(parseIngredient(text).name
 function stockMeasure(item,unit){
  if(unit==='stock')return 1;
  const itemUnit=String(item.unit||'').trim().toLowerCase();const aliases={gram:'g',grams:'g',kilogram:'kg',kilograms:'kg',litre:'l',litres:'l',liter:'l',liters:'l',millilitre:'ml',millilitres:'ml'};const base=units[aliases[itemUnit]||itemUnit];
- if(base&&base[0]===unit)return base[1];
+ if(base)return base[0]===unit?base[1]:null;
  if(item.packUnit===unit&&Number.isFinite(Number(item.packSize))&&Number(item.packSize)>0)return Number(item.packSize);
  if(unit==='ml'&&Number.isFinite(Number(item.litresPerUnit))&&Number(item.litresPerUnit)>0)return Number(item.litresPerUnit)*1000;
  return null;
 }
+function convertAmount(amount,from,to){const a=units[from],b=units[to];return a&&b&&a[0]===b[0]&&Number.isFinite(Number(amount))&&Number(amount)>0?Number(amount)*a[1]/b[1]:null;}
+function reconcileLinks(old,ingredients){
+ const previous=old?.ingredients||[],used=new Set();
+ return ingredients.map(ingredient=>{
+  const parsed=parseIngredient(ingredient),key=normalName(parsed.name);
+  let index=previous.findIndex((text,n)=>!used.has(n)&&String(text).trim()===ingredient.trim());
+  if(index<0){const matches=previous.map((text,n)=>({n,p:parseIngredient(text)})).filter(({n,p})=>!used.has(n)&&normalName(p.name)===key);if(matches.length===1)index=matches[0].n;}
+  if(index<0)return null;used.add(index);const link=old.pantryLinks?.[index];if(!link?.itemId||link.ingredient!==previous[index])return null;
+  const before=parseIngredient(previous[index]),sameQuantity=before.amount===parsed.amount&&before.unit===parsed.unit;
+  return {...link,ingredient,...(!sameQuantity?{amount:null,needsQuantityReview:true}:{})};
+ });
+}
+function recipeLinks(recipe){const links=recipe?.pantryLinks||[];return reconcileLinks({ingredients:links.map(link=>link?.ingredient||''),pantryLinks:links},recipe?.ingredients||[]);}
+function itemDimension(item){const raw=String(item.unit||'').trim().toLowerCase();if(/^(g|grams?|kg|kilograms?)$/.test(raw))return 'g';if(/^(ml|millilitres?|l|litres?|liters?)$/.test(raw))return 'ml';if(Number(item.packSize)>0&&['g','ml'].includes(item.packUnit))return item.packUnit;if(Number(item.litresPerUnit)>0)return 'ml';return null;}
 function check(recipe,items,{today=new Date()}={}){
- const remaining=new Map();const rows=(recipe.ingredients||[]).map((ingredient,index)=>{
-  const link=recipe.pantryLinks?.[index];if(!link||link.ingredient!==ingredient||!link.itemId)return {ingredient,status:'unlinked',message:'Not linked to pantry stock'};
-  const item=items.find(i=>i.id===link.itemId);if(!item)return {ingredient,status:'missing',message:'Linked item was removed from your pantry'};
-  const row={ingredient,itemId:item.id,itemName:item.name,location:item.location||'',needed:Number(link.amount),unit:link.unit};
-  if(item.current===null||item.current===undefined||item.current===''||!Number.isFinite(Number(item.current)))return {...row,status:'unknown',message:'Stock has not been counted'};
-  if(!(Number(item.current)>0))return {...row,status:'missing',available:0,message:'Out of stock'};
-  const requested=units[link.unit],perPack=requested?stockMeasure(item,requested[0]):null;
-  if(!(Number(link.amount)>0)||!Number.isFinite(Number(link.amount))||!requested||perPack===null)return {...row,status:'unknown',message:'Check quantity or add a compatible pack weight / volume in Pantry'};
+ const remaining=new Map(),links=recipeLinks(recipe);const rows=(recipe.ingredients||[]).map((ingredient,index)=>{
+  const link=links[index];if(!link||link.ingredient!==ingredient||!link.itemId)return {ingredient,linked:false,reason:'unlinked',status:'unlinked',message:'Choose a pantry item'};
+  const item=items.find(i=>i.id===link.itemId);if(!item)return {ingredient,linked:false,reason:'removed',status:'missing',message:'Previously linked item was removed from your pantry'};
+  const row={ingredient,linked:true,itemId:item.id,itemName:item.name,location:item.location||'',needed:Number(link.amount),unit:link.unit,stockUnit:item.unit||'unit'};
+  if(link.needsQuantityReview)return {...row,reason:'recipe_changed',status:'unknown',message:'Recipe amount changed — confirm the quantity; your item link is kept'};
+  const requested=units[link.unit];
+  if(!(Number(link.amount)>0)||!Number.isFinite(Number(link.amount))||!requested)return {...row,reason:'requirement',status:'unknown',message:'Enter the amount needed for this recipe'};
+  if(item.current===null||item.current===undefined||item.current===''||!Number.isFinite(Number(item.current)))return {...row,reason:'count',status:'unknown',message:'Count not recorded — enter how much you have'};
+  if(!(Number(item.current)>0))return {...row,reason:'empty',status:'missing',available:0,message:'Out of stock'};
+  const perPack=stockMeasure(item,requested[0]);
+  if(perPack===null){const dimension=itemDimension(item),mismatch=dimension&&dimension!==requested[0];return {...row,reason:mismatch?'units':'size',status:'unknown',message:mismatch?'Recipe uses '+(requested[0]==='ml'?'volume':'weight')+'; pantry stock uses '+(dimension==='g'?'weight':'volume')+' — confirm an equivalent amount':'Pack size missing — add its labelled weight or volume'};}
   const neededPacks=Number(link.amount)*requested[1]/perPack;
   const date=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');
   const all=Batches.read(item),eligible=all.filter(r=>!r.expiry||r.expiry>=date).reduce((sum,r)=>sum+r.quantity,0),expiredQuantity=all.filter(r=>r.expiry&&r.expiry<date).reduce((sum,r)=>sum+r.quantity,0);
   const stock=remaining.has(item.id)?remaining.get(item.id):eligible;const enough=stock+1e-9>=neededPacks;
   remaining.set(item.id,Math.max(0,stock-neededPacks));
   const needsDateReview=!enough&&expiredQuantity>0;
-  return {...row,available:stock*perPack/requested[1],shortfall:enough?0:Math.max(0,(neededPacks-stock)*perPack/requested[1]),status:needsDateReview?'review':enough?'available':'short',message:needsDateReview?'Past the recorded date — review batches':enough?'Enough recorded stock':'Not enough recorded stock'};
- });return {rows,ready:rows.length>0&&rows.every(r=>r.status==='available'),available:rows.filter(r=>r.status==='available').length};
+  return {...row,available:stock*perPack/requested[1],shortfall:enough?0:Math.max(0,(neededPacks-stock)*perPack/requested[1]),reason:needsDateReview?'expiry':enough?'enough':'short',status:needsDateReview?'review':enough?'available':'short',message:needsDateReview?'Past the recorded date — review batches':enough?'Enough recorded stock':'Not enough recorded stock'};
+ });return {rows,linked:rows.filter(r=>r.linked).length,ready:rows.length>0&&rows.every(r=>r.status==='available'),available:rows.filter(r=>r.status==='available').length};
 }
+
 function validateLinks(recipe,links,items){return recipe.ingredients.map((ingredient,index)=>{const link=links[index];if(!link?.itemId)return null;if(!items.some(i=>i.id===link.itemId))throw Error('Choose a current pantry item.');const amount=link.amount===null||link.amount===''?null:Number(link.amount);if(amount!==null&&(!Number.isFinite(amount)||amount<=0))throw Error('Ingredient amounts must be positive, or blank if unknown.');if(!units[link.unit])throw Error('Choose a supported ingredient unit.');return {ingredient,itemId:link.itemId,amount,unit:link.unit};});}
-const api={parseIngredient,suggestion,stockMeasure,check,validateLinks};if(typeof module!=='undefined')module.exports=api;else root.RecipeStock=api;
+const api={parseIngredient,suggestion,stockMeasure,itemDimension,convertAmount,reconcileLinks,recipeLinks,check,validateLinks};if(typeof module!=='undefined')module.exports=api;else root.RecipeStock=api;
 })(typeof window==='undefined'?globalThis:window);
