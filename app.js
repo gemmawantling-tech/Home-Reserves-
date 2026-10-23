@@ -97,6 +97,7 @@ function editItem(id){
   '<details class="entry-section" id="itemPortions"><summary>Portions and pack size</summary><div class="split">'+field('packSize','Weight / volume per pack',i?.packSize??'','type="number" min="0" step="any"')+dropdown('packUnit','Pack unit',[['g','grams'],['ml','millilitres']],i?.packUnit||'g')+'</div>'+
   field('unit','Counted in',i?.unit||'packs','required maxlength="32" placeholder="packs / tins / bottles"')+
   '<div class="split">'+field('portionsPerPack','Portions per pack',i?.portionsPerPack??'','type="number" min="0" step="any"')+dropdown('portionType','These portions are',[['ingredient','Ingredient portions'],['side','Side portions'],['meal','Complete meal portions']],i?.portionType||'ingredient')+'</div>'+
+  portionEstimateControl(i||{})+
   (i?.portionSource?'<p class="hint">Portions: '+escapeHTML(i.portionSource)+'. Change the count to replace it with your own value.</p>':'')+
   field('litresPerUnit','Litres per item (for drinking water)',i?.litresPerUnit??'','type="number" min="0" step="any"')+'<p class="hint">Ingredient and side portions are not complete meals. Leave unknown sizes and portions blank.</p></details>'+
   '<details class="entry-section"><summary>Stock targets and notes</summary>'+field('optimum','Your stock target',i?.optimum??'','type="number" min="0" step="any" placeholder="Optional"')+
@@ -286,7 +287,7 @@ document.addEventListener('submit',e=>{
     if(!name||!unit||!cat(category)){alert('Please provide a name, unit and valid category.');return;}
     let item={...(id?itemById(id):{}),id:id||uid(),name,category,unit,portionsPerPack:numberOrNull(data.get('portionsPerPack')),portionType:String(data.get('portionType')||'ingredient'),current:numberOrNull(data.get('current')),optimum:numberOrNull(data.get('optimum')),location:String(data.get('location')||'').trim(),expiry,litresPerUnit:numberOrNull(data.get('litresPerUnit')),notes:String(data.get('notes')||'').trim()};
     item=StockBatches.reconcile(id?itemById(id):null,item);item.packSize=numberOrNull(data.get('packSize'));item.packUnit=String(data.get('packUnit')||'g');state.entryDefaults={category:item.category,location:item.location};
-    if(!id||item.portionsPerPack!==itemById(id)?.portionsPerPack)item.portionSource='manual';if(id){const at=state.items.findIndex(i=>i.id===id);if(at<0)return;state.items[at]=item;}else state.items.push(item);
+    if(!id||item.portionsPerPack!==itemById(id)?.portionsPerPack)item.portionSource='manual';applyPortionPlanning(form,item);if(id){const at=state.items.findIndex(i=>i.id===id);if(at<0)return;state.items[at]=item;}else state.items.push(item);
   }else if(form.id==='categoryForm'){
     const name=String(data.get('name')||'').trim(),type=String(data.get('type')),mainGroup=String(data.get('mainGroup')||'');
     if(!name||!['food','water','other'].includes(type)){alert('Enter a valid category.');return;}

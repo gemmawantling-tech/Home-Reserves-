@@ -15,8 +15,9 @@ function unitEnergy(i){
  const unit=num(i.kcalPerUnit),serving=energy(n,'serving'),per100=num(a.labelPer100)??energy(n,knownBasis&&nb==='prepared'&&energy(n,'prepared_100g')!==null?'prepared_100g':'100g');
  if(method==='unit'||(method==='auto'&&unit!==null))return unit===null?{reason:'Calories per counted stock unit missing.'}:{each:unit,arithmetic:unit+' kcal per '+(i.unit||'unit'),knownBasis};
  if(method==='servings'){
+  if(i.portionSource==='estimated'&&!(num(i.labelServingsPerPack)>0))return {reason:'Planning portions are not label servings. Enter manufacturer servings before using per-serving calories.'};
   if(m?.loose)return {reason:'For loose grams / kg / litres, use matching per-100 nutrition or a measured serving size.'};
-  const servings=num(i.portionsPerPack),servingSize=L.metricAmount(i.servingSize);if(m&&servingSize?.unit===m.unit&&servings*servingSize.value>(num(a.edibleSize)??m.size)+1e-8)return {reason:'Label serving count exceeds the edible pack size. Correct the count or serving weight.'};return serving!==null&&servings>0?{each:serving*servings,arithmetic:servings+' label servings × '+serving+' kcal per serving',knownBasis}:{reason:'Enter label servings per pack and calories per serving.'};
+  const servings=num(i.labelServingsPerPack)>0?Number(i.labelServingsPerPack):num(i.portionsPerPack),servingSize=L.metricAmount(i.servingSize);if(m&&servingSize?.unit===m.unit&&servings*servingSize.value>(num(a.edibleSize)??m.size)+1e-8)return {reason:'Label serving count exceeds the edible pack size. Correct the count or serving weight.'};return serving!==null&&servings>0?{each:serving*servings,arithmetic:servings+' label servings × '+serving+' kcal per serving',knownBasis}:{reason:'Enter label servings per pack and calories per serving.'};
  }
  if(!m)return {reason:'Pack weight / volume missing. Enter it, or use label servings or whole-unit calories.'};
  const edible=num(a.edibleSize),fraction=num(a.edibleFraction)??1;
@@ -24,7 +25,7 @@ function unitEnergy(i){
  if(!(fraction>0&&fraction<=1))return {reason:'Edible fraction must be above zero and no greater than one.'};
  const size=(m.loose?m.size*fraction:edible??m.size);
  if(per100!==null&&method!=='servingWeight')return {each:per100*size/100,arithmetic:size+' '+m.unit+' edible × '+per100+' kcal per 100'+m.unit+' ÷ 100',knownBasis};
- const ss=L.metricAmount(i.servingSize)||((num(i.servingWeight)>0&&['g','ml'].includes(i.servingUnit))?{value:Number(i.servingWeight),unit:i.servingUnit}:null);
+ const ss=L.metricAmount(i.servingSize)||((i.portionSource!=='estimated'&&num(i.servingWeight)>0&&['g','ml'].includes(i.servingUnit))?{value:Number(i.servingWeight),unit:i.servingUnit}:null);
  return serving!==null&&ss&&ss.unit===m.unit?{each:serving*size/ss.value,arithmetic:size+' '+m.unit+' ÷ '+ss.value+' '+m.unit+' per serving × '+serving+' kcal',knownBasis}:{reason:serving!==null?'Serving weight / volume missing or incompatible with the stock unit.':'Calories per 100g / 100ml or per serving missing.'};
 }
 function assess(data,today=new Date().toISOString().slice(0,10)){
@@ -60,7 +61,7 @@ function assess(data,today=new Date().toISOString().slice(0,10)){
  const legacy=F.analyse(data,today),total=verified+estimatedExtra;const preparationUnassessed=eligibleRows.filter(r=>{const a=data.items.find(i=>i.id===r.id)?.foodAssessment||{};return [a.readyToEat,a.requiresWater,a.requiresHeat,a.requiresCooking].some(v=>typeof v!=='boolean');}).length;
  return {rows,remaining,verified,estimatedExtra,total,daily:req.daily,requirements:req,verifiedDays:verified/req.daily,estimatedDays:total/req.daily,noCookMeals,preparationUnassessed,mealVariety:mealTypes.size,assessed:eligibleRows.length-remaining.length,foodTypes:eligibleRows.length,legacy,goal:num(data.settings?.reserveDays),duplicateBarcodes:duplicateCodes(data.items||[])};
 }
-function signature(i){return JSON.stringify([i.unit,i.packSize,i.packUnit,i.portionsPerPack,i.servingSize,i.servingWeight,i.servingUnit,i.kcalPerUnit,i.nutrition,i.foodAssessment?.labelPer100,i.foodAssessment?.method,i.foodAssessment?.stockBasis,i.foodAssessment?.nutritionBasis,i.foodAssessment?.edibleSize,i.foodAssessment?.edibleFraction]);}
+function signature(i){return JSON.stringify([i.unit,i.packSize,i.packUnit,i.labelServingsPerPack,i.portionsPerPack,i.servingSize,i.servingWeight,i.servingUnit,i.kcalPerUnit,i.nutrition,i.foodAssessment?.labelPer100,i.foodAssessment?.method,i.foodAssessment?.stockBasis,i.foodAssessment?.nutritionBasis,i.foodAssessment?.edibleSize,i.foodAssessment?.edibleFraction]);}
 function aReady(i){const a=i.foodAssessment||{};return a.readyToEat===true&&a.requiresWater===false&&a.requiresHeat===false&&a.requiresCooking===false&&a.mealConfirmed===true&&i.portionType==='meal'&&num(i.portionsPerPack)>0;}
 function duplicateCodes(items){const codes=new Map();for(const i of items){if(!i.barcode)continue;try{const code=C.barcode(i.barcode);if(!codes.has(code))codes.set(code,[]);codes.get(code).push(i.id);}catch{}}return [...codes.values()].filter(ids=>ids.length>1);}
 const api={assess,requirements,unitEnergy,signature};if(typeof module!=='undefined')module.exports=api;else root.EnergyAssessment=api;

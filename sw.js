@@ -1,4 +1,4 @@
-const CACHE_NAME='home-reserves-v26-energy-ledger';
+const CACHE_NAME='home-reserves-v27-portion-estimates';
 const LOCAL_FILES=['./','./index.html','./app.css','./app.js','./backup-store.js','./backup-ui.js','./food-groups-ui.js','./food-coverage.js','./energy-assessment.js','./food-coverage-ui.js','./gap-review.js','./gap-review-ui.js','./stock-batches.js','./stock-batches-ui.js','./cooking-ideas-ui.js','./recipe-book.js','./recipe-book-ui.js','./recipe-stock.js','./recipe-stock-ui.js','./first-aid-kit.js','./first-aid-kit-ui.js','./inventory-core.js','./product-lookup.js','./barcode-scanner.js','./scanning.js','./vendor/zxing.min.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(LOCAL_FILES.map(url=>new Request(url,{cache:'reload'})))).then(()=>self.skipWaiting()));

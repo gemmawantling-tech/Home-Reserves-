@@ -12,6 +12,15 @@ function metricAmount(text){
  return {value:n*(u==='kg'||u.startsWith('kilogram')||u==='l'||u.startsWith('litre')?1000:u==='cl'?10:1),unit:/^(?:ml|millilitre|cl|l|litre)/.test(u)?'ml':'g'};
 }
 function packAmount(text){const simple=metricAmount(text);if(simple)return simple;const m=String(text||'').trim().match(/^(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g|ml|cl|l)\s*$/i);if(!m||Number(m[1])<1||Number(m[1])>1000)return null;const inner=metricAmount(m[2]+' '+m[3]);return inner?{value:inner.value*Number(m[1]),unit:inner.unit}:null;}
+const portionProfiles=[
+ {id:'rice',label:'Dry rice',grams:75,basis:'dry',type:'side'},
+ {id:'rice-cooked',label:'Cooked rice',grams:125,basis:'cooked',type:'side'},
+ {id:'pasta',label:'Dry pasta',grams:75,basis:'dry',type:'ingredient'},
+ {id:'beans-drained',label:'Beans / lentils, drained',grams:125,basis:'drained',type:'ingredient'},
+ {id:'vegetables',label:'Vegetables, edible weight',grams:80,basis:'edible',type:'side'},
+ {id:'oats',label:'Dry oats',grams:40,basis:'dry',type:'ingredient'}
+];
+function estimatePortions(weight,profile,grams){const p=portionProfiles.find(p=>p.id===profile),size=Number(weight),portion=grams===undefined?p?.grams:Number(grams);if(!p||!Number.isFinite(size)||!(size>0)||!Number.isFinite(portion)||!(portion>0))return null;return {profile:p.id,basis:p.basis,type:p.type,gramsPerPortion:portion,edibleGrams:size,portions:size/portion,source:'Home Reserves illustrative adult planning portion; editable, not manufacturer guidance',confidence:'planning estimate'};}
 function calculatePortions(pack,unit,serving,servingUnit){return Number(pack)>0&&Number(serving)>0&&unit===servingUnit?Number(pack)/Number(serving):null;}
 function normalise(p,b){
  const rawUnit=String(p.product_quantity_unit||'').toLowerCase();
@@ -19,7 +28,7 @@ function normalise(p,b){
  const serving=metricAmount(p.serving_size);
  const reported=Number(p.servings_per_package)>0?Number(p.servings_per_package):null;
  const calculated=pack&&serving?calculatePortions(pack.value,pack.unit,serving.value,serving.unit):null;
- return {barcode:b,name:p.product_name_en||p.product_name||'',brand:p.brands||'',image:/^https:\/\//.test(p.image_front_small_url||'')?p.image_front_small_url:'',packLabel:p.quantity||'',packSize:pack?.value??null,packUnit:pack?.unit||'g',ingredients:p.ingredients_text_en||p.ingredients_text||'',dietary:(p.labels_tags||[]).join(', '),allergens:(p.allergens_tags||[]).join(', '),nutrition:p.nutriments||{},servingSize:p.serving_size||'',servingWeight:serving?.value??null,servingUnit:serving?.unit||pack?.unit||'g',portionsPerPack:reported??calculated,portionSource:reported?'reported':calculated?'calculated':'',portionType:'ingredient',source:'Open Food Facts',sourceUrl:'https://world.openfoodfacts.org/product/'+b};
+ return {barcode:b,name:p.product_name_en||p.product_name||'',brand:p.brands||'',image:/^https:\/\//.test(p.image_front_small_url||'')?p.image_front_small_url:'',packLabel:p.quantity||'',packSize:pack?.value??null,packUnit:pack?.unit||'g',ingredients:p.ingredients_text_en||p.ingredients_text||'',dietary:(p.labels_tags||[]).join(', '),allergens:(p.allergens_tags||[]).join(', '),nutrition:p.nutriments||{},servingSize:p.serving_size||'',servingWeight:serving?.value??null,servingUnit:serving?.unit||pack?.unit||'g',labelServingsPerPack:reported,portionsPerPack:reported??calculated,portionSource:reported?'reported':calculated?'calculated':'',portionType:'ingredient',source:'Open Food Facts',sourceUrl:'https://world.openfoodfacts.org/product/'+b};
 }
 // Only registered, licensed providers are used. No scraping or secret API keys in this PWA.
 const providers=[];
@@ -37,5 +46,5 @@ async function lookup(b,{fetcher=fetch,signal}={}){
  return null;
 }
 
-const api={lookup,registerProvider,barcodeVariants,normalise,metricAmount,packAmount,calculatePortions};if(typeof module!=='undefined')module.exports=api;else root.ProductLookup=api;
+const api={portionProfiles,estimatePortions,lookup,registerProvider,barcodeVariants,normalise,metricAmount,packAmount,calculatePortions};if(typeof module!=='undefined')module.exports=api;else root.ProductLookup=api;
 })(typeof window==='undefined'?globalThis:window);
