@@ -39,7 +39,7 @@ let state, activeTab = 'overview', categoryFilter = 'all', statusFilter = 'all',
 function validData(d){
   if (!d || !Array.isArray(d.categories) || !Array.isArray(d.items) || !Array.isArray(d.recipes) || (!d.settings || typeof d.settings !== 'object' || Array.isArray(d.settings))) throw Error('Not a valid Home Reserves backup');
   if (d.items.length > 20000 || d.categories.length > 500 || d.recipes.length > 2000) throw Error('Backup too large');
-  return RecipeBook.initialise(InventoryCore.migrateCategories(d));
+  ProductGroups.validate(d);return RecipeBook.initialise(InventoryCore.migrateCategories(d));
 }
 let savedInventory=null,startupRecoveryNeeded=false;
 try {savedInventory=localStorage.getItem(STORAGE_KEY);state=validData(JSON.parse(savedInventory));}catch{state=validData(newData());if(savedInventory){startupRecoveryNeeded=true;message='Your saved records could not be read. Open Settings → Backups & recovery before adding new items. Existing recovery copies have been kept.';}}
@@ -101,6 +101,7 @@ function editItem(id){
   portionEstimateControl(i||{})+
   (i?.portionSource?'<p class="hint">Portions: '+escapeHTML(i.portionSource)+'. Change the count to replace it with your own value.</p>':'')+
   field('litresPerUnit','Litres per item (for drinking water)',i?.litresPerUnit??'','type="number" min="0" step="any"')+'<p class="hint">Ingredient and side portions are not complete meals. Leave unknown sizes and portions blank.</p></details>'+
+  productDetailsFields(i||{})+
   '<details class="entry-section"><summary>Stock targets and notes</summary>'+field('optimum','Your stock target',i?.optimum??'','type="number" min="0" step="any" placeholder="Optional"')+
   '<div class="field"><label for="f_notes">Notes</label><textarea id="f_notes" name="notes" rows="2" maxlength="300">'+escapeHTML(i?.notes||'')+'</textarea></div></details>'+
   (i?.barcode?'<details class="entry-section"><summary>Product details and nutrition</summary><p class="hint">Barcode: '+escapeHTML(i.barcode)+'</p><button type="button" data-action="productEdit" data-id="'+escapeHTML(i.id)+'">Edit product details</button></details>':'')+'</form>');
@@ -142,14 +143,13 @@ function itemCard(i){
   if(expiry!==null&&expiry<=30)badges+='<span class="badge red">'+(expiry<0?'Expired':expiry===0?'Expires today':'Expires in '+expiry+' days')+'</span>';
   return '<article class="item"><div class="item-header"><div><div class="item-title">'+escapeHTML(i.name)+'</div>'+badges+'</div><button class="text-button" data-action="editItem" data-id="'+escapeHTML(i.id)+'">Edit</button></div>'+
     (!i.batchEntry&&listed(i)&&max>0?'<div class="meter '+(below?'low':'')+'"><span style="width:'+Math.min(100,amount(i)*100/max)+'%"></span></div>':'')+
+    ((i.brand||i.flavour||i.purchasePrice!==null&&i.purchasePrice!==undefined)?'<p class="hint variety-meta">'+[i.brand,i.flavour,i.purchasePrice!==null&&i.purchasePrice!==undefined?'£'+fmt(i.purchasePrice)+' per '+i.unit:''].filter(Boolean).map(escapeHTML).join(' · ')+'</p>':'')+
     '<div class="item-bottom"><div class="counts">Current: <strong>'+(listed(i)?fmt(i.current):'—')+'</strong> '+escapeHTML(i.unit)+'<br>Your target: <strong>'+(targeted(i)?fmt(i.optimum):'Not set')+'</strong> '+escapeHTML(i.unit)+
     (i.portionsPerPack?'<br>'+fmt(amount(i)*i.portionsPerPack)+' '+escapeHTML(i.portionType||'ingredient')+' portions'+(['estimated','calculated'].includes(i.portionSource)?' (estimate)':''):'')+(i.location?'<br>📍 '+escapeHTML(i.location):'')+(i.expiry?'<br>Use-by / best-before: '+escapeHTML(displayDate(i.expiry)):'')+(i.notes?'<br>'+escapeHTML(i.notes):'')+'</div>'+
     (i.batchEntry?'<span class="hint">Batch quantity · product total '+fmt(i.productCurrent)+' '+escapeHTML(i.unit)+'</span>':'<div class="stepper"><button type="button" data-action="minus" data-id="'+escapeHTML(i.id)+'" aria-label="Use one '+escapeHTML(i.name)+'" '+(!listed(i)||amount(i)<=0?'disabled':'')+'>−</button><strong>'+(listed(i)?fmt(i.current):'—')+'</strong><button type="button" data-action="plus" data-id="'+escapeHTML(i.id)+'" aria-label="Add one '+escapeHTML(i.name)+'">+</button></div>')+'</div>'+batchSummary(i)+'</article>';
 }
 const pantrySectionState=new Map();
 let showEmptyCategories=false;
-let pantrySectionDefaults=new Map();
-try{const saved=JSON.parse(localStorage.getItem('home_reserves_sections_v1'));if(Array.isArray(saved))pantrySectionDefaults=new Map(saved.filter(e=>Array.isArray(e)&&typeof e[0]==='string'&&typeof e[1]==='boolean'));}catch{}
 function pantryViewKey(id){return JSON.stringify([categoryFilter,statusFilter,locationFilter,query,id]);}
 function pantryGroups(items){
  const groups=new Map();
@@ -157,34 +157,30 @@ function pantryGroups(items){
  for(const item of items){const id=item.category||'';if(!groups.has(id))groups.set(id,{id,name:'Uncategorised',items:[]});groups.get(id).items.push(item);}
  const filtering=categoryFilter!=='all'||statusFilter!=='all'||locationFilter!=='all'||query.trim()!=='';
  const kitId=familyKitCategoryId(),kitRows=familyKitPantryRows();
- const isOpen=id=>{const key=pantryViewKey(id);return pantrySectionState.has(key)?pantrySectionState.get(key):filtering?true:pantrySectionDefaults.get(id)||false;};
+ const isOpen=id=>pantrySectionState.get(pantryViewKey(id))||false;
  const draw=g=>{
   const kit=g.id===kitId?kitRows:[],below=g.items.filter(low).length+kit.filter(r=>low({...r,optimum:r.target})).length,expiring=g.items.filter(expiresSoon).length+kit.filter(expiresSoon).length;
   const title=InventoryCore.categoryName(g);
-  return '<details class="pantry-group" data-category="'+escapeHTML(g.id)+'" data-view="'+escapeHTML(pantryViewKey(g.id))+'" '+(isOpen(g.id)?'open':'')+'><summary><span class="group-title">'+escapeHTML(title)+'</span><span class="group-count">'+(g.items.length?g.items.length+' item type'+(g.items.length===1?'':'s'):'')+(kit.length?(g.items.length?' · ':'')+kit.length+' checklist entries':'')+(!g.items.length&&!kit.length?'Empty':'')+'</span>'+(below?'<span class="badge low">'+below+' below your target</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="items-grid">'+g.items.map(itemCard).join('')+(!g.items.length&&!kit.length?'<p class="hint">No items in this group yet.</p>':'')+'</div>'+(kit.length?familyKitPantryContent(kit):'')+'</details>';
+  return '<details class="pantry-group pantry-accordion" data-accordion="sub:'+escapeHTML(g.mainGroup||'other')+'" name="sub:'+escapeHTML(g.mainGroup||'other')+'" data-category="'+escapeHTML(g.id)+'" data-view="'+escapeHTML(pantryViewKey(g.id))+'" '+(isOpen(g.id)?'open':'')+'><summary><span class="group-title">'+escapeHTML(title)+'</span><span class="group-count">'+(g.items.length?g.items.length+' item type'+(g.items.length===1?'':'s'):'')+(kit.length?(g.items.length?' · ':'')+kit.length+' checklist entries':'')+(!g.items.length&&!kit.length?'Empty':'')+'</span>'+(below?'<span class="badge low">'+below+' below your target</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="items-grid">'+productGroupContent(g.items,g.id)+(!g.items.length&&!kit.length?'<p class="hint">No items in this group yet.</p>':'')+'</div>'+(kit.length?familyKitPantryContent(kit):'')+'</details>';
  };
  return InventoryCore.MAIN_GROUPS.map(parent=>{
   const members=[...groups.values()].filter(g=>(g.mainGroup||'other')===parent.id&&((showEmptyCategories&&!filtering)||g.items.length||(g.id===kitId&&kitRows.length))),direct=members.filter(InventoryCore.generalFood).flatMap(g=>g.items),children=members.filter(g=>!InventoryCore.generalFood(g)).sort((a,b)=>InventoryCore.alphabetical(InventoryCore.categoryName(a),InventoryCore.categoryName(b)));
   if(!members.length)return '';
   const shown=members.flatMap(g=>g.items),kit=children.some(g=>g.id===kitId)?kitRows:[],rootId='__'+parent.id+'-root',below=shown.filter(low).length+kit.filter(r=>low({...r,optimum:r.target})).length,expiring=shown.filter(expiresSoon).length+kit.filter(expiresSoon).length;
-  return '<details class="pantry-group group-parent '+(parent.id==='food'?'food-parent':'')+'" data-category="'+rootId+'" data-view="'+escapeHTML(pantryViewKey(rootId))+'" '+(isOpen(rootId)?'open':'')+'><summary><span class="group-title">'+escapeHTML(parent.name)+'</span><span class="group-count">'+shown.length+' item types · '+children.length+' subcategories'+(kit.length?' · '+kit.length+' checklist entries':'')+'</span>'+(below?'<span class="badge low">'+below+' below your target</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="food-subcategories">'+children.map(draw).join('')+'</div>'+(direct.length?'<div class="items-grid food-direct">'+direct.map(itemCard).join('')+'</div>':'')+'</details>';
+  return '<details data-accordion="main" name="pantry-main" class="pantry-group pantry-accordion group-parent '+(parent.id==='food'?'food-parent':'')+'" data-category="'+rootId+'" data-view="'+escapeHTML(pantryViewKey(rootId))+'" '+(isOpen(rootId)?'open':'')+'><summary><span class="group-title">'+escapeHTML(parent.name)+'</span><span class="group-count">'+shown.length+' item types · '+children.length+' subcategories'+(kit.length?' · '+kit.length+' checklist entries':'')+'</span>'+(below?'<span class="badge low">'+below+' below your target</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="food-subcategories">'+children.map(draw).join('')+'</div>'+(direct.length?'<div class="items-grid food-direct">'+productGroupContent(direct,'general-food')+'</div>':'')+'</details>';
  }).join('');
 }
-document.addEventListener('toggle',e=>{
- const group=e.target;if(!group.matches?.('.pantry-group')||!group.isConnected)return;
- pantrySectionState.set(group.dataset.view,group.open);
- if(categoryFilter==='all'&&statusFilter==='all'&&locationFilter==='all'&&!query.trim()){
-  pantrySectionDefaults.set(group.dataset.category,group.open);
-  try{localStorage.setItem('home_reserves_sections_v1',JSON.stringify([...pantrySectionDefaults]));}catch{}
- }
-},true);
-function setPantrySections(open){document.querySelectorAll('.pantry-group').forEach(group=>{pantrySectionState.set(group.dataset.view,open);group.open=open;});}
+function closePantrySection(group){group.open=false;pantrySectionState.set(group.dataset.view,false);group.querySelectorAll('details.pantry-accordion').forEach(child=>{child.open=false;pantrySectionState.set(child.dataset.view,false);});}
+function openPantrySection(group){document.querySelectorAll('details.pantry-accordion').forEach(other=>{if(other!==group&&other.dataset.accordion===group.dataset.accordion)closePantrySection(other);});group.open=true;pantrySectionState.set(group.dataset.view,true);}
+document.addEventListener('click',e=>{const summary=e.target.closest('summary');if(!summary||!summary.parentElement.matches('details.pantry-accordion'))return;e.preventDefault();const group=summary.parentElement;if(group.open)closePantrySection(group);else openPantrySection(group);});
+document.addEventListener('toggle',e=>{const group=e.target;if(!group.matches?.('details.pantry-accordion')||!group.isConnected)return;if(group.open)openPantrySection(group);else closePantrySection(group);},true);
+function setPantrySections(open){document.querySelectorAll('details.pantry-accordion').forEach(closePantrySection);if(!open)return;let group=document.querySelector('#screen > .group-parent');while(group){openPantrySection(group);group=group.querySelector(':scope > .food-subcategories > .pantry-group, :scope > .items-grid > .product-group');}}
 function inventory(){
   const locations=[...new Set(state.items.map(i=>String(i.location||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const filtered=state.items.filter(i=>(categoryFilter==='all'||(categoryFilter.startsWith('all-')&&InventoryCore.categoryGroup(cat(i.category))===categoryFilter.slice(4))||i.category===categoryFilter)&&(locationFilter==='all'||String(i.location||'').trim()===locationFilter)&&
+  const filtered=state.items.filter(i=>(!ungroupedOnly||!ProductGroups.groupFor(i,state))&&(categoryFilter==='all'||(categoryFilter.startsWith('all-')&&InventoryCore.categoryGroup(cat(i.category))===categoryFilter.slice(4))||i.category===categoryFilter)&&(locationFilter==='all'||String(i.location||'').trim()===locationFilter)&&
     (statusFilter==='all'||(statusFilter==='low'&&low(i))||(statusFilter==='uncounted'&&!listed(i))||(statusFilter==='notarget'&&!targeted(i))||(statusFilter==='expiry'&&expiresSoon(i)))&&
-    (i.name+' '+(i.location||'')+' '+(i.notes||'')).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>Number(low(b))-Number(low(a))||a.name.localeCompare(b.name));
-  return '<section class="card"><div class="section-title"><h2>Pantry & household stock</h2><details class="pantry-tools"><summary>Pantry tools</summary><div class="actions"><button data-action="organiseFood">Organise food</button><button data-action="newCategory">+ Category</button><button data-action="expandPantry">Expand all</button><button data-action="collapsePantry">Collapse all</button><label class="check-label"><input type="checkbox" id="showEmptyCategories" '+(showEmptyCategories?'checked':'')+'> Show empty categories</label></div></details></div>'+
+    (i.name+' '+(i.brand||'')+' '+(i.flavour||'')+' '+(ProductGroups.groupFor(i,state)?.name||'')+' '+(i.location||'')+' '+(i.notes||'')).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>Number(low(b))-Number(low(a))||a.name.localeCompare(b.name));
+  return '<section class="card"><div class="section-title"><h2>Pantry & household stock</h2><details class="pantry-tools"><summary>Pantry tools</summary><div class="actions"><button data-action="organiseFood">Organise food</button><button data-action="newCategory">+ Category</button><button data-action="manageProductGroups">Product groups</button><button data-action="expandPantry">Open first section</button><button data-action="collapsePantry">Collapse all</button><label class="check-label"><input type="checkbox" id="ungroupedOnly" '+(ungroupedOnly?'checked':'')+'> Ungrouped items only</label><label class="check-label"><input type="checkbox" id="showEmptyCategories" '+(showEmptyCategories?'checked':'')+'> Show empty categories</label></div></details></div>'+
     '<div class="filter-grid"><input id="filterSearch" class="search" aria-label="Search stock" placeholder="Search items or locations" value="'+escapeHTML(query)+'">'+
     '<select id="filterCategory" aria-label="Select category"><option value="all">All categories</option>'+InventoryCore.MAIN_GROUPS.map(g=>'<option value="all-'+g.id+'" '+(categoryFilter==='all-'+g.id?'selected':'')+'>'+escapeHTML(g.name)+' — all subcategories</option>').join('')+InventoryCore.sortedCategories(state.categories).map(c=>'<option value="'+escapeHTML(c.id)+'" '+(categoryFilter===c.id?'selected':'')+'>'+escapeHTML(InventoryCore.categoryLabel(c))+'</option>').join('')+'</select>'+
     '<select id="filterStatus" aria-label="Select status">'+[['all','All levels'],['low','Below your target'],['uncounted','Not counted'],['notarget','No target set'],['expiry','Expiring soon']].map(([v,l])=>'<option value="'+v+'" '+(statusFilter===v?'selected':'')+'>'+l+'</option>').join('')+'</select></div>'+
@@ -212,11 +208,11 @@ function settings(){
 }
 function render(){
   $('message').innerHTML=message?'<div class="message warning">'+escapeHTML(message)+'</div>':'';
-  $('screen').innerHTML=activeTab==='foodImprove'?foodAssessmentScreen():activeTab==='foodDetails'?foodCalculationScreen():activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='expiry'?expiring():activeTab==='recipes'?recipeBookScreen():activeTab==='stocktake'?stocktake():settings();
+  $('screen').innerHTML=activeTab==='productGroups'?productGroupsScreen():activeTab==='foodImprove'?foodAssessmentScreen():activeTab==='foodDetails'?foodCalculationScreen():activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='expiry'?expiring():activeTab==='recipes'?recipeBookScreen():activeTab==='stocktake'?stocktake():settings();
   document.querySelector('.header [data-action="scan"]').hidden=activeTab==='stocktake';
-  document.querySelectorAll('.nav [data-tab]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.tab===(activeTab.startsWith('food')?'overview':activeTab)?'page':'false')));
+  document.querySelectorAll('.nav [data-tab]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.tab===(activeTab==='productGroups'?'inventory':activeTab.startsWith('food')?'overview':activeTab)?'page':'false')));
 }
-function showTab(t){activeTab=t==='meals'?'recipes':t;render();window.scrollTo({top:0,behavior:'smooth'});}
+function showTab(t){if(t==='inventory'&&activeTab!=='inventory')pantrySectionState.clear();activeTab=t==='meals'?'recipes':t;render();window.scrollTo({top:0,behavior:'smooth'});}
 function downloadFile(name,text,mime){
   const blob=new Blob([text],{type:mime});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},3000);
 }
@@ -249,7 +245,7 @@ document.addEventListener('click',e=>{
     case 'starter':loadStarters();break;
     case 'export':if(startupRecoveryNeeded){notify('Current records cannot be read. Open Settings → View recovery copies to download an existing snapshot.');break;}state.backupRequestedAt=new Date().toISOString();persist();downloadFile('home-reserves-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2),'application/json');break;
     case 'csv':{
-      const rows=[['Category','Item','Current','Your target','Unit','Location','Expiry','Litres per item','Notes'],...state.items.map(i=>[cat(i.category)?.name||'',i.name,i.current??'',i.optimum??'',i.unit,i.location||'',i.expiry||'',i.litresPerUnit??'',i.notes||''])];
+      const rows=[['Category','Item','Current','Your target','Unit','Location','Expiry','Litres per item','Notes','Product group','Brand','Flavour','Purchase price per stock unit (£)'],...state.items.map(i=>[cat(i.category)?.name||'',i.name,i.current??'',i.optimum??'',i.unit,i.location||'',i.expiry||'',i.litresPerUnit??'',i.notes||'',ProductGroups.groupFor(i,state)?.name||'',i.brand||'',i.flavour||'',i.purchasePrice??''])];
       const csv=rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
       downloadFile('home-reserves-inventory.csv','\uFEFF'+csv,'text/csv;charset=utf-8');break;
     }
@@ -287,8 +283,9 @@ document.addEventListener('submit',e=>{
     const name=String(data.get('name')||'').trim(),category=String(data.get('category')),unit=String(data.get('unit')||'').trim();
     if(!name||!unit||!cat(category)){alert('Please provide a name, unit and valid category.');return;}
     let item={...(id?itemById(id):{}),id:id||uid(),name,category,unit,portionsPerPack:numberOrNull(data.get('portionsPerPack')),portionType:String(data.get('portionType')||'ingredient'),current:numberOrNull(data.get('current')),optimum:numberOrNull(data.get('optimum')),location:String(data.get('location')||'').trim(),expiry,litresPerUnit:numberOrNull(data.get('litresPerUnit')),notes:String(data.get('notes')||'').trim()};
+    try{readProductDetails(form,item);}catch(err){alert(err.message);return;}
     item=StockBatches.reconcile(id?itemById(id):null,item);item.packSize=numberOrNull(data.get('packSize'));item.packUnit=String(data.get('packUnit')||'g');state.entryDefaults={category:item.category,location:item.location};
-    if(!id||item.portionsPerPack!==itemById(id)?.portionsPerPack)item.portionSource='manual';applyPortionPlanning(form,item);if(id){const at=state.items.findIndex(i=>i.id===id);if(at<0)return;state.items[at]=item;}else state.items.push(item);
+    if(!id||item.portionsPerPack!==itemById(id)?.portionsPerPack)item.portionSource='manual';applyPortionPlanning(form,item);if(id){const at=state.items.findIndex(i=>i.id===id);if(at<0)return;state.items[at]=item;}else state.items.push(item);if(item.barcode){state.catalogue=state.catalogue||{};for(const key of Object.keys(state.catalogue))if(InventoryCore.sameBarcode(state.catalogue[key]?.barcode||key,item.barcode))state.catalogue[key]={...state.catalogue[key],...item};state.catalogue[item.barcode]={...(state.catalogue[item.barcode]||{}),...item};}
   }else if(form.id==='categoryForm'){
     const name=String(data.get('name')||'').trim(),type=String(data.get('type')),mainGroup=String(data.get('mainGroup')||'');
     if(!name||!['food','water','other'].includes(type)){alert('Enter a valid category.');return;}
