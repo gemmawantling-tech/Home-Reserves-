@@ -128,7 +128,7 @@ function overview(){
   '<section class="card"><div class="section-title"><h2>Below your target</h2><button class="text-button" data-tab="inventory">All stock →</button></div>'+
   (below.length?below.slice(0,7).map(i=>'<div class="row-line"><span>'+escapeHTML(i.name)+'</span><span class="small nowrap">'+fmt(i.current)+' / '+fmt(i.optimum)+' '+escapeHTML(i.unit)+'</span></div>').join(''):'<div class="empty">Nothing currently recorded below its target.</div>')+
   (below.length>7?'<p class="hint">Plus '+(below.length-7)+' more items.</p>':'')+'</section>'+
-  stats()+(!state.items.length?'<section class="card"><h2>Start your inventory</h2><p class="small muted">Add the items you already have, or load a starter list and fill in quantities as you do a stock check.</p><div class="actions"><button class="primary" data-action="newItem">+ Add first item</button><button data-action="starter">Load starter list</button></div></section>':'');
+  stats()+(!state.items.length?'<section class="card"><h2>Start your inventory</h2><p class="small muted">Add the items you already have, or load a starter list and fill in quantities as you do a stock check.</p><div class="actions"><button data-action="starter">Load starter list</button></div></section>':'');
 }
 function itemCard(i){
   const c=cat(i.category),expiry=daysToExpiry(i),below=i.batchEntry?low({...i,current:i.productCurrent}):low(i),max=targeted(i)?Number(i.optimum):0;
