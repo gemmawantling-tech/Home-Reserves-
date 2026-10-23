@@ -30,16 +30,16 @@ function recipeLinks(recipe){const links=recipe?.pantryLinks||[];return reconcil
 function itemDimension(item){const raw=String(item.unit||'').trim().toLowerCase();if(/^(g|grams?|kg|kilograms?)$/.test(raw))return 'g';if(/^(ml|millilitres?|l|litres?|liters?)$/.test(raw))return 'ml';if(Number(item.packSize)>0&&['g','ml'].includes(item.packUnit))return item.packUnit;if(Number(item.litresPerUnit)>0)return 'ml';return null;}
 function check(recipe,items,{today=new Date()}={}){
  const remaining=new Map(),links=recipeLinks(recipe);const rows=(recipe.ingredients||[]).map((ingredient,index)=>{
-  const link=links[index];if(!link||link.ingredient!==ingredient||!link.itemId)return {ingredient,linked:false,reason:'unlinked',status:'unlinked',message:'Choose a pantry item'};
+  const link=links[index];if(!link||link.ingredient!==ingredient||!link.itemId)return {ingredient,linked:false,reason:'unlinked',status:'unlinked',message:'Choose which pantry product you use for this ingredient'};
   const item=items.find(i=>i.id===link.itemId);if(!item)return {ingredient,linked:false,reason:'removed',status:'missing',message:'Previously linked item was removed from your pantry'};
   const row={ingredient,linked:true,itemId:item.id,itemName:item.name,location:item.location||'',needed:Number(link.amount),unit:link.unit,stockUnit:item.unit||'unit'};
   if(link.needsQuantityReview)return {...row,reason:'recipe_changed',status:'unknown',message:'Recipe amount changed — confirm the quantity; your item link is kept'};
   const requested=units[link.unit];
   if(!(Number(link.amount)>0)||!Number.isFinite(Number(link.amount))||!requested)return {...row,reason:'requirement',status:'unknown',message:'Enter the amount needed for this recipe'};
-  if(item.current===null||item.current===undefined||item.current===''||!Number.isFinite(Number(item.current)))return {...row,reason:'count',status:'unknown',message:'Count not recorded — enter how much you have'};
+  if(item.current===null||item.current===undefined||item.current===''||!Number.isFinite(Number(item.current)))return {...row,reason:'count',status:'unknown',message:'Quantity unknown — enter how many packs or units you have'};
   if(!(Number(item.current)>0))return {...row,reason:'empty',status:'missing',available:0,message:'Out of stock'};
   const perPack=stockMeasure(item,requested[0]);
-  if(perPack===null){const dimension=itemDimension(item),mismatch=dimension&&dimension!==requested[0];return {...row,reason:mismatch?'units':'size',status:'unknown',message:mismatch?'Recipe uses '+(requested[0]==='ml'?'volume':'weight')+'; pantry stock uses '+(dimension==='g'?'weight':'volume')+' — confirm an equivalent amount':'Pack size missing — add its labelled weight or volume'};}
+  if(perPack===null){const dimension=itemDimension(item),mismatch=dimension&&dimension!==requested[0];return {...row,reason:mismatch?'units':'size',status:'unknown',message:mismatch?'Recipe uses '+(requested[0]==='ml'?'volume':'weight')+'; pantry stock uses '+(dimension==='g'?'weight':'volume')+' — enter the recipe amount in the same units as your stock':'Pack size unknown — enter the weight or volume on the label'};}
   const neededPacks=Number(link.amount)*requested[1]/perPack;
   const date=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');
   const all=Batches.read(item),eligible=all.filter(r=>!r.expiry||r.expiry>=date).reduce((sum,r)=>sum+r.quantity,0),expiredQuantity=all.filter(r=>r.expiry&&r.expiry<date).reduce((sum,r)=>sum+r.quantity,0);
