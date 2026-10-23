@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#355f49">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="Track household emergency supplies, chosen optimum levels, recipes and water reserves.">
+  <meta name="description" content="Track household emergency supplies, chosen stock targets, recipes and water reserves.">
   <title>Home Reserves — Emergency Inventory</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon-192.png">
@@ -15,15 +15,15 @@
   <main class="app">
     <header class="header">
       <div><div class="eyebrow">HOUSEHOLD READINESS</div><h1>Home Reserves</h1><p class="subtitle">Your stock, your targets, your household supplies.</p></div>
-      <div class="actions"><button id="quickAdd" type="button">+ Add item</button><button class="primary" data-action="scan">Scan barcode</button></div>
+      <div class="actions primary-actions"><button id="quickAdd" type="button">+ Add item</button><button class="primary" data-action="scan">Scan barcode</button></div>
     </header>
     <nav class="nav" aria-label="Main navigation">
-      <button type="button" data-tab="overview">Overview</button>
-      <button type="button" data-tab="inventory">Pantry</button>
-      <button type="button" data-tab="expiry">Expiring</button>
-      <button type="button" data-tab="stocktake">Stocktake</button>
-      <button type="button" data-tab="recipes">Recipes</button>
-      <button type="button" data-tab="settings">Settings</button>
+      <button type="button" data-tab="overview"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 3l9 7v11h-6v-7H9v7H3Z"/></svg><span>Overview</span></button>
+      <button type="button" data-tab="inventory"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h16v18H4ZM4 9h16M4 15h16M8 6h8M8 12h8M8 18h8"/></svg><span>Pantry</span></button>
+      <button type="button" data-tab="expiry"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v6h4"/></svg><span>Expiring</span></button>
+      <button type="button" data-tab="stocktake"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4ZM8 7v10M11 7v10M14 7v10M17 7v10"/></svg><span>Stocktake</span></button>
+      <button type="button" data-tab="recipes"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h7l2 2 2-2h7v15h-7l-2 2-2-2H3ZM12 6v15"/></svg><span>Recipes</span></button>
+      <button type="button" data-tab="settings"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8"/></svg><span>Settings</span></button>
     </nav>
     <div id="message" aria-live="polite"></div>
     <div id="screen"></div>

@@ -114,34 +114,38 @@ function editCategory(id){
 function stat(value,label){return '<div class="stat"><div class="value">'+value+'</div><div class="label">'+label+'</div></div>';}
 function stats(){
   const counted=state.items.filter(listed).length,below=state.items.filter(low).length,exp=state.items.filter(expiresSoon).length;
-  return '<div class="stat-grid">'+stat(fmt(counted)+'<span class="small muted"> / '+fmt(state.items.length)+'</span>','Item types counted')+stat(fmt(below),'Below your optimum')+stat(fmt(exp),'Expiring or expired')+stat(fmt(state.items.filter(i=>FoodCoverage.eligible(i,state)&&amount(i)>0).length),'Food types in stock')+'</div>';
+  return '<div class="stat-grid">'+stat(fmt(counted)+'<span class="small muted"> / '+fmt(state.items.length)+'</span>','Item types counted')+stat(fmt(below),'Below your target')+stat(fmt(exp),'Expiring or expired')+stat(fmt(state.items.filter(i=>FoodCoverage.eligible(i,state)&&amount(i)>0).length),'Food types in stock')+'</div>';
 }
 function backupStatus(){return backupPanel();}
 function overview(){
   const people=setting('people',4),water=waterLitres(),waterDays=water/(people*setting('waterPerPerson',3));
   const below=state.items.filter(low).sort((a,b)=>a.name.localeCompare(b.name));
-  return '<section class="card hero"><div class="eyebrow">YOUR HOME AT A GLANCE</div><h2>Everything in one place</h2><p class="small muted">Track what you have, set your own comfortable levels and see what needs using or checking. No automatic shopping targets.</p><button data-action="reviewGaps">Identify gaps</button></section>'+gapsSummary()+backupReminder()+foodCoverageCard()+stats()+
-  '<section class="card"><h2>Water coverage</h2><div class="large-number">'+(water>0?fmt(waterDays):'—')+'</div><p class="small muted">Water days · '+fmt(water)+' litres logged</p><p class="hint">Based on '+fmt(people)+' people and '+fmt(setting('waterPerPerson',3))+' litres per person daily for drinking and basic cooking. Does not cover washing.</p></section>'+
-  '<section class="card"><div class="section-title"><h2>Below your optimum</h2><button class="text-button" data-tab="inventory">All stock →</button></div>'+
+  const due=InventoryCore.expiryItems(state.items,30);
+  const food=FoodCoverage.assess(state);
+  return '<div class="overview-summary" role="group" aria-label="Reserve summary"><button data-action="overviewFood"><strong>'+fmt(food.packs)+'</strong><span>Food packs / units</span></button><button data-action="overviewWater"><strong>'+(water>0?fmt(waterDays):'—')+'</strong><span>Days of water</span></button><button data-tab="expiry"><strong>'+due.length+'</strong><span>Due / overdue · 30 days</span></button><button data-action="reviewGaps"><strong>'+below.length+'</strong><span>Below your target</span></button></div>'+foodCoverageCard()+
+  '<section class="card" id="waterCoverage"><h2>Water coverage</h2><div class="large-number">'+(water>0?fmt(waterDays):'—')+'</div><p class="small muted">Water days · '+fmt(water)+' litres logged</p><p class="hint">Based on '+fmt(people)+' people and '+fmt(setting('waterPerPerson',3))+' litres per person daily for drinking and basic cooking. Does not cover washing.</p></section>'+
+  '<section class="card"><div class="section-title"><h2>Expiring products</h2><button class="text-button" data-tab="expiry">View all →</button></div><p class="small">'+due.length+' batches / items due or overdue within 30 days</p>'+due.slice(0,3).map(i=>'<div class="row-line"><strong>'+escapeHTML(i.name)+'</strong><span class="small">'+escapeHTML(displayDate(i.expiry))+'</span></div>').join('')+(!due.length?'<p class="hint">No recorded dates due in the next 30 days.</p>':'')+'</section>'+gapsSummary()+backupReminder()+
+  '<section class="card"><div class="section-title"><h2>Below your target</h2><button class="text-button" data-tab="inventory">All stock →</button></div>'+
   (below.length?below.slice(0,7).map(i=>'<div class="row-line"><span>'+escapeHTML(i.name)+'</span><span class="small nowrap">'+fmt(i.current)+' / '+fmt(i.optimum)+' '+escapeHTML(i.unit)+'</span></div>').join(''):'<div class="empty">Nothing currently recorded below its target.</div>')+
   (below.length>7?'<p class="hint">Plus '+(below.length-7)+' more items.</p>':'')+'</section>'+
-  (!state.items.length?'<section class="card"><h2>Start your inventory</h2><p class="small muted">Add the items you already have, or load a starter list and fill in quantities as you do a stock check.</p><div class="actions"><button class="primary" data-action="newItem">+ Add first item</button><button data-action="starter">Load starter list</button></div></section>':'');
+  stats()+(!state.items.length?'<section class="card"><h2>Start your inventory</h2><p class="small muted">Add the items you already have, or load a starter list and fill in quantities as you do a stock check.</p><div class="actions"><button class="primary" data-action="newItem">+ Add first item</button><button data-action="starter">Load starter list</button></div></section>':'');
 }
 function itemCard(i){
   const c=cat(i.category),expiry=daysToExpiry(i),below=i.batchEntry?low({...i,current:i.productCurrent}):low(i),max=targeted(i)?Number(i.optimum):0;
   let badges='<span class="badge">'+escapeHTML(c?.name||'Other')+'</span>';
   if(cat(i.category)?.type==='food'&&!(Number(i.portionsPerPack)>0))badges+='<span class="badge">Portions to review</span>';
   if(!listed(i))badges+='<span class="badge low">Not yet counted</span>';
-  else if(below)badges+='<span class="badge low">Below optimum</span>';
+  else if(below)badges+='<span class="badge low">Below your target</span>';
   else if(!targeted(i))badges+='<span class="badge">No target</span>';
   if(expiry!==null&&expiry<=30)badges+='<span class="badge red">'+(expiry<0?'Expired':expiry===0?'Expires today':'Expires in '+expiry+' days')+'</span>';
   return '<article class="item"><div class="item-header"><div><div class="item-title">'+escapeHTML(i.name)+'</div>'+badges+'</div><button class="text-button" data-action="editItem" data-id="'+escapeHTML(i.id)+'">Edit</button></div>'+
     (!i.batchEntry&&listed(i)&&max>0?'<div class="meter '+(below?'low':'')+'"><span style="width:'+Math.min(100,amount(i)*100/max)+'%"></span></div>':'')+
-    '<div class="item-bottom"><div class="counts">Current: <strong>'+(listed(i)?fmt(i.current):'—')+'</strong> '+escapeHTML(i.unit)+'<br>Optimum: <strong>'+(targeted(i)?fmt(i.optimum):'Not set')+'</strong> '+escapeHTML(i.unit)+
+    '<div class="item-bottom"><div class="counts">Current: <strong>'+(listed(i)?fmt(i.current):'—')+'</strong> '+escapeHTML(i.unit)+'<br>Your target: <strong>'+(targeted(i)?fmt(i.optimum):'Not set')+'</strong> '+escapeHTML(i.unit)+
     (i.portionsPerPack?'<br>'+fmt(amount(i)*i.portionsPerPack)+' '+escapeHTML(i.portionType||'ingredient')+' portions'+(['estimated','calculated'].includes(i.portionSource)?' (estimate)':''):'')+(i.location?'<br>📍 '+escapeHTML(i.location):'')+(i.expiry?'<br>Use-by / best-before: '+escapeHTML(displayDate(i.expiry)):'')+(i.notes?'<br>'+escapeHTML(i.notes):'')+'</div>'+
     (i.batchEntry?'<span class="hint">Batch quantity · product total '+fmt(i.productCurrent)+' '+escapeHTML(i.unit)+'</span>':'<div class="stepper"><button type="button" data-action="minus" data-id="'+escapeHTML(i.id)+'" aria-label="Use one '+escapeHTML(i.name)+'" '+(!listed(i)||amount(i)<=0?'disabled':'')+'>−</button><strong>'+(listed(i)?fmt(i.current):'—')+'</strong><button type="button" data-action="plus" data-id="'+escapeHTML(i.id)+'" aria-label="Add one '+escapeHTML(i.name)+'">+</button></div>')+'</div>'+batchSummary(i)+'</article>';
 }
 const pantrySectionState=new Map();
+let showEmptyCategories=false;
 let pantrySectionDefaults=new Map();
 try{const saved=JSON.parse(localStorage.getItem('home_reserves_sections_v1'));if(Array.isArray(saved))pantrySectionDefaults=new Map(saved.filter(e=>Array.isArray(e)&&typeof e[0]==='string'&&typeof e[1]==='boolean'));}catch{}
 function pantryViewKey(id){return JSON.stringify([categoryFilter,statusFilter,locationFilter,query,id]);}
@@ -155,13 +159,13 @@ function pantryGroups(items){
  const draw=g=>{
   const kit=g.id===kitId?kitRows:[],below=g.items.filter(low).length+kit.filter(r=>low({...r,optimum:r.target})).length,expiring=g.items.filter(expiresSoon).length+kit.filter(expiresSoon).length;
   const title=InventoryCore.categoryName(g);
-  return '<details class="pantry-group" data-category="'+escapeHTML(g.id)+'" data-view="'+escapeHTML(pantryViewKey(g.id))+'" '+(isOpen(g.id)?'open':'')+'><summary><span class="group-title">'+escapeHTML(title)+'</span><span class="group-count">'+(g.items.length?g.items.length+' item type'+(g.items.length===1?'':'s'):'')+(kit.length?(g.items.length?' · ':'')+kit.length+' checklist entries':'')+(!g.items.length&&!kit.length?'Empty':'')+'</span>'+(below?'<span class="badge low">'+below+' below optimum</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="items-grid">'+g.items.map(itemCard).join('')+(!g.items.length&&!kit.length?'<p class="hint">No items in this group yet.</p>':'')+'</div>'+(kit.length?familyKitPantryContent(kit):'')+'</details>';
+  return '<details class="pantry-group" data-category="'+escapeHTML(g.id)+'" data-view="'+escapeHTML(pantryViewKey(g.id))+'" '+(isOpen(g.id)?'open':'')+'><summary><span class="group-title">'+escapeHTML(title)+'</span><span class="group-count">'+(g.items.length?g.items.length+' item type'+(g.items.length===1?'':'s'):'')+(kit.length?(g.items.length?' · ':'')+kit.length+' checklist entries':'')+(!g.items.length&&!kit.length?'Empty':'')+'</span>'+(below?'<span class="badge low">'+below+' below your target</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="items-grid">'+g.items.map(itemCard).join('')+(!g.items.length&&!kit.length?'<p class="hint">No items in this group yet.</p>':'')+'</div>'+(kit.length?familyKitPantryContent(kit):'')+'</details>';
  };
  return InventoryCore.MAIN_GROUPS.map(parent=>{
-  const members=[...groups.values()].filter(g=>(g.mainGroup||'other')===parent.id&&(!filtering||g.items.length||(g.id===kitId&&kitRows.length))),direct=members.filter(InventoryCore.generalFood).flatMap(g=>g.items),children=members.filter(g=>!InventoryCore.generalFood(g)).sort((a,b)=>InventoryCore.alphabetical(InventoryCore.categoryName(a),InventoryCore.categoryName(b)));
+  const members=[...groups.values()].filter(g=>(g.mainGroup||'other')===parent.id&&((showEmptyCategories&&!filtering)||g.items.length||(g.id===kitId&&kitRows.length))),direct=members.filter(InventoryCore.generalFood).flatMap(g=>g.items),children=members.filter(g=>!InventoryCore.generalFood(g)).sort((a,b)=>InventoryCore.alphabetical(InventoryCore.categoryName(a),InventoryCore.categoryName(b)));
   if(!members.length)return '';
   const shown=members.flatMap(g=>g.items),kit=children.some(g=>g.id===kitId)?kitRows:[],rootId='__'+parent.id+'-root',below=shown.filter(low).length+kit.filter(r=>low({...r,optimum:r.target})).length,expiring=shown.filter(expiresSoon).length+kit.filter(expiresSoon).length;
-  return '<details class="pantry-group group-parent '+(parent.id==='food'?'food-parent':'')+'" data-category="'+rootId+'" data-view="'+escapeHTML(pantryViewKey(rootId))+'" '+(isOpen(rootId)?'open':'')+'><summary><span class="group-title">'+escapeHTML(parent.name)+'</span><span class="group-count">'+shown.length+' item types · '+children.length+' subcategories'+(kit.length?' · '+kit.length+' checklist entries':'')+'</span>'+(below?'<span class="badge low">'+below+' below optimum</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="food-subcategories">'+children.map(draw).join('')+'</div>'+(direct.length?'<div class="items-grid food-direct">'+direct.map(itemCard).join('')+'</div>':'')+'</details>';
+  return '<details class="pantry-group group-parent '+(parent.id==='food'?'food-parent':'')+'" data-category="'+rootId+'" data-view="'+escapeHTML(pantryViewKey(rootId))+'" '+(isOpen(rootId)?'open':'')+'><summary><span class="group-title">'+escapeHTML(parent.name)+'</span><span class="group-count">'+shown.length+' item types · '+children.length+' subcategories'+(kit.length?' · '+kit.length+' checklist entries':'')+'</span>'+(below?'<span class="badge low">'+below+' below your target</span>':'')+(expiring?'<span class="badge red">'+expiring+' due / overdue</span>':'')+'</summary><div class="food-subcategories">'+children.map(draw).join('')+'</div>'+(direct.length?'<div class="items-grid food-direct">'+direct.map(itemCard).join('')+'</div>':'')+'</details>';
  }).join('');
 }
 document.addEventListener('toggle',e=>{
@@ -178,12 +182,12 @@ function inventory(){
   const filtered=state.items.filter(i=>(categoryFilter==='all'||(categoryFilter.startsWith('all-')&&InventoryCore.categoryGroup(cat(i.category))===categoryFilter.slice(4))||i.category===categoryFilter)&&(locationFilter==='all'||String(i.location||'').trim()===locationFilter)&&
     (statusFilter==='all'||(statusFilter==='low'&&low(i))||(statusFilter==='uncounted'&&!listed(i))||(statusFilter==='notarget'&&!targeted(i))||(statusFilter==='expiry'&&expiresSoon(i)))&&
     (i.name+' '+(i.location||'')+' '+(i.notes||'')).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>Number(low(b))-Number(low(a))||a.name.localeCompare(b.name));
-  return '<section class="card"><div class="section-title"><h2>Pantry & household stock</h2><div class="actions"><button data-action="organiseFood">Organise food</button><button data-action="newCategory">+ Category</button><button data-action="newItem">+ Add item</button><button class="primary" data-action="scan">Scan barcode</button></div></div>'+
-    '<p class="hint">All your household stock is here. Use Storage location to see just the pantry, freezer or another cupboard.</p><div class="filter-grid"><input id="filterSearch" class="search" aria-label="Search stock" placeholder="Search items or locations" value="'+escapeHTML(query)+'">'+
+  return '<section class="card"><div class="section-title"><h2>Pantry & household stock</h2><details class="pantry-tools"><summary>Pantry tools</summary><div class="actions"><button data-action="organiseFood">Organise food</button><button data-action="newCategory">+ Category</button><button data-action="expandPantry">Expand all</button><button data-action="collapsePantry">Collapse all</button><label class="check-label"><input type="checkbox" id="showEmptyCategories" '+(showEmptyCategories?'checked':'')+'> Show empty categories</label></div></details></div>'+
+    '<div class="filter-grid"><input id="filterSearch" class="search" aria-label="Search stock" placeholder="Search items or locations" value="'+escapeHTML(query)+'">'+
     '<select id="filterCategory" aria-label="Select category"><option value="all">All categories</option>'+InventoryCore.MAIN_GROUPS.map(g=>'<option value="all-'+g.id+'" '+(categoryFilter==='all-'+g.id?'selected':'')+'>'+escapeHTML(g.name)+' — all subcategories</option>').join('')+InventoryCore.sortedCategories(state.categories).map(c=>'<option value="'+escapeHTML(c.id)+'" '+(categoryFilter===c.id?'selected':'')+'>'+escapeHTML(InventoryCore.categoryLabel(c))+'</option>').join('')+'</select>'+
-    '<select id="filterStatus" aria-label="Select status">'+[['all','All levels'],['low','Below optimum'],['uncounted','Not counted'],['notarget','No optimum set'],['expiry','Expiring soon']].map(([v,l])=>'<option value="'+v+'" '+(statusFilter===v?'selected':'')+'>'+l+'</option>').join('')+'</select></div>'+
+    '<select id="filterStatus" aria-label="Select status">'+[['all','All levels'],['low','Below your target'],['uncounted','Not counted'],['notarget','No target set'],['expiry','Expiring soon']].map(([v,l])=>'<option value="'+v+'" '+(statusFilter===v?'selected':'')+'>'+l+'</option>').join('')+'</select></div>'+
     '<label for="filterLocation">Storage location</label><select id="filterLocation"><option value="all">All locations</option>'+locations.map(location=>'<option value="'+escapeHTML(location)+'" '+(locationFilter===location?'selected':'')+'>'+escapeHTML(location)+'</option>').join('')+'</select>'+
-    '<p class="hint">'+filtered.length+' inventory item types shown; kit contents are listed separately. Open a main group, then a subcategory to see its items. Use + / − for quick stock adjustments, or Edit for an exact count.</p>'+(filtered.length||familyKitPantryRows().length||(categoryFilter==='all'&&statusFilter==='all'&&locationFilter==='all'&&!query.trim()&&state.categories.some(c=>c.type==='food'))?'<div class="actions"><button data-action="expandPantry">Expand all</button><button data-action="collapsePantry">Collapse all</button></div>':'')+'</section>'+
+    '<p class="hint pantry-count">'+filtered.length+' item types · Open a category to see stock.</p></section>'+
     (filtered.length||familyKitPantryRows().length||(categoryFilter==='all'&&statusFilter==='all'&&locationFilter==='all'&&!query.trim()&&state.categories.some(c=>c.type==='food'))?pantryGroups(filtered):'<section class="card empty">'+(state.items.length?'No items match your filters.':'No inventory yet. Add your first item, or load starter items in Settings.')+'</section>');
 }
 function expiring(){
@@ -206,6 +210,7 @@ function settings(){
 function render(){
   $('message').innerHTML=message?'<div class="message warning">'+escapeHTML(message)+'</div>':'';
   $('screen').innerHTML=activeTab==='overview'?overview():activeTab==='inventory'?inventory():activeTab==='expiry'?expiring():activeTab==='recipes'?recipeBookScreen():activeTab==='stocktake'?stocktake():settings();
+  document.querySelector('.header [data-action="scan"]').hidden=activeTab==='stocktake';
   document.querySelectorAll('.nav [data-tab]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.tab===activeTab?'page':'false')));
 }
 function showTab(t){activeTab=t==='meals'?'recipes':t;render();window.scrollTo({top:0,behavior:'smooth'});}
@@ -226,6 +231,7 @@ document.addEventListener('click',e=>{
   if(button.dataset.tab){showTab(button.dataset.tab);return;}
   const action=button.dataset.action,id=button.dataset.id;
   switch(action){
+    case 'overviewFood':case 'overviewWater':{const section=document.getElementById(action==='overviewFood'?'foodCoverage':'waterCoverage');section.setAttribute('tabindex','-1');section.focus({preventScroll:true});section.scrollIntoView({behavior:'smooth',block:'start'});break;}
     case 'expandPantry':setPantrySections(true);break;
     case 'collapsePantry':setPantrySections(false);break;
     case 'newItem':editItem();break;
@@ -240,7 +246,7 @@ document.addEventListener('click',e=>{
     case 'starter':loadStarters();break;
     case 'export':if(startupRecoveryNeeded){notify('Current records cannot be read. Open Settings → View recovery copies to download an existing snapshot.');break;}state.backupRequestedAt=new Date().toISOString();persist();downloadFile('home-reserves-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2),'application/json');break;
     case 'csv':{
-      const rows=[['Category','Item','Current','Optimum','Unit','Location','Expiry','Litres per item','Notes'],...state.items.map(i=>[cat(i.category)?.name||'',i.name,i.current??'',i.optimum??'',i.unit,i.location||'',i.expiry||'',i.litresPerUnit??'',i.notes||''])];
+      const rows=[['Category','Item','Current','Your target','Unit','Location','Expiry','Litres per item','Notes'],...state.items.map(i=>[cat(i.category)?.name||'',i.name,i.current??'',i.optimum??'',i.unit,i.location||'',i.expiry||'',i.litresPerUnit??'',i.notes||''])];
       const csv=rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
       downloadFile('home-reserves-inventory.csv','\uFEFF'+csv,'text/csv;charset=utf-8');break;
     }
@@ -255,6 +261,7 @@ document.addEventListener('input',e=>{
   query=e.target.value;const caret=e.target.selectionStart;render();const field=$('filterSearch');field.focus();field.setSelectionRange(caret,caret);
 });
 document.addEventListener('change',async e=>{
+  if(e.target.id==='showEmptyCategories'){showEmptyCategories=e.target.checked;render();document.querySelector('.pantry-tools').open=true;document.getElementById('showEmptyCategories').focus();}
   if(e.target.id==='filterLocation'){locationFilter=e.target.value;render();}
   if(e.target.id==='expiryRange'){expiryRange=e.target.value;render();}
   if(e.target.id==='filterCategory'){categoryFilter=e.target.value;render();}
