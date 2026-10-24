@@ -166,3 +166,12 @@ Verification: `node --test tests/*.test.cjs` and `node tests/group-review-browse
 Version 34 applies recognised product-name groups to existing ungrouped stock on the first Pantry visit, with a recovery backup before saving. It keeps existing group assignments and targets, quantities, batches, dates and categories; unknown names remain ungrouped. The persisted `automaticGroupingVersion` marker prevents the upgrade from undoing later deliberate ungrouping. No database migration or Firebase rules are involved. Pantry shows group-name/quantity shortcuts that open the relevant category and varieties directly. Manual review and group management remain available.
 
 Verify automatic upgrade with `node tests/automatic-groups-browser.cjs`, including against the deployed `TEST_URL`.
+
+
+### Compact integrated Pantry (version 35)
+
+The Pantry now replaces its introduction, group shortcuts and card wall with a search-first layout, one relocated Add/Scan action bar, compact filters, and one nested category → subcategory → product group → variety list. Collapsed rows display recorded quantities, variety counts and stock warnings. Opening a variety reveals the existing editable item, quantity controls and expiry batches. Only one sibling accordion stays open at each level; all start collapsed on entering Pantry. Group management lives inside each expanded group and in Filters & tools. Existing photos are shown where available, with a neutral pack icon otherwise.
+
+No inventory schema, quantities, categories, recipes, backup format, or security rules are changed by this presentation update. No example stock is added. The automatic grouping upgrade from version 34 remains in place.
+
+Validation includes `node tests/compact-pantry-browser.cjs`: integrated layout, search/action order, exclusive category/subcategory/group/variety expansion, stock adjustments, batches, persistence, and 360/384/390/412/430px widths. It saves screenshots of the category, expanded-group and item-detail states to `/tmp/pantry-compact-*.png` for comparison with the supplied illustration. Browser fixtures are isolated synthetic data, never household production records.
