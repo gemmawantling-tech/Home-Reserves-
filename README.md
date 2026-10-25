@@ -175,3 +175,12 @@ The Pantry now replaces its introduction, group shortcuts and card wall with a s
 No inventory schema, quantities, categories, recipes, backup format, or security rules are changed by this presentation update. No example stock is added. The automatic grouping upgrade from version 34 remains in place.
 
 Validation includes `node tests/compact-pantry-browser.cjs`: integrated layout, search/action order, exclusive category/subcategory/group/variety expansion, stock adjustments, batches, persistence, and 360/384/390/412/430px widths. It saves screenshots of the category, expanded-group and item-detail states to `/tmp/pantry-compact-*.png` for comparison with the supplied illustration. Browser fixtures are isolated synthetic data, never household production records.
+
+
+### Simple multi-item grouping (version 36)
+
+Use **Pantry → Group items** to select products from a searchable checklist of the whole inventory, then choose an existing group or type a new name and save once. Selection survives search changes; Select shown and Clear selection support bulk work. Adding to an existing group preserves its current members. Edit/Varieties uses the same checklist; unticking unassigns without deleting stock. A recovery copy is required before saves, and concurrent edits block stale replacement.
+
+Grouping no longer requires matching categories or stock units. Original item categories, quantities, expiry batches, nutrition and catalogue corrections remain intact. Each group appears once under its display category (automatically chosen on creation, optional to change), while calorie/recipe calculations still use the original item records. Mixed groups display separate totals such as `4 jars + 3 cartons + 2 packs`; mass and volume conversions stay separate. Existing group target values and units are retained. Mixed/uncounted group targets stay review-only on the shopping list rather than implying a purchase quantity. Rename, merge and ungroup support mixed stock without unit/category gates.
+
+No database migration, Firebase rules changes or new inventory records are required. Existing groups and backups remain readable. Tests: `node --test tests/*.test.cjs`, `node tests/simple-groups-browser.cjs`, plus existing product-group, compact Pantry, mobile, shopping, barcode and backup browser checks. The new browser test saves isolated synthetic-stock screenshots to `/tmp/simple-group-selection.png` and `/tmp/simple-group-mixed-stock.png`.
