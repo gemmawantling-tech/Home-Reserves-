@@ -1,7 +1,8 @@
-const CACHE_NAME='home-reserves-v36-simple-groups';
+const CACHE_NAME='home-reserves-v37-versioned-assets';
 const LOCAL_FILES=['./','./index.html','./app.css','./app.js','./backup-store.js','./backup-ui.js','./food-groups-ui.js','./food-coverage.js','./energy-assessment.js','./food-coverage-ui.js','./gap-review.js','./gap-review-ui.js','./stock-batches.js','./stock-batches-ui.js','./cooking-ideas-ui.js','./recipe-book.js','./recipe-book-ui.js','./recipe-stock.js','./recipe-stock-ui.js','./first-aid-kit.js','./first-aid-kit-ui.js','./inventory-core.js','./product-groups.js','./shopping-list.js','./shopping-list-ui.js','./product-groups-ui.js','./product-lookup.js','./barcode-scanner.js','./scanning.js','./vendor/zxing.min.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const RELEASE_FILES=LOCAL_FILES.concat(LOCAL_FILES.filter(url=>/\.(js|css)$/.test(url)).map(url=>url+'?v=37'));
 self.addEventListener('install',event=>{
-  event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(LOCAL_FILES.map(url=>new Request(url,{cache:'reload'})))).then(()=>self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(RELEASE_FILES.map(url=>new Request(url,{cache:'reload'})))).then(()=>self.skipWaiting()));
 });
 self.addEventListener('activate',event=>{
   event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('home-reserves-')&&k!==CACHE_NAME).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
